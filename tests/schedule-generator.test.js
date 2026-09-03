@@ -19,7 +19,6 @@ test('assigns an opponent to every week', () => {
 });
 
 test('no team is scheduled more than the max meetings allowed', () => {
-  const schedule = schedule => schedule;
   const generated = generateSeasonSchedule(TEAMS, SETTINGS);
   const locked = generated.map((w) => ({ ...w, locked: true }));
   const counts = meetingCounts(locked);
@@ -49,4 +48,20 @@ test('preserves an existing locked week and still respects it when generating ot
   assert.deepEqual(week3, existing[0]);
   const rayCount = generated.filter((w) => w.opponent === 'Ray').length;
   assert.ok(rayCount <= SETTINGS.maxMeetingsPerOpponent);
+});
+
+test('a week with no eligible opponent gets a null opponent and an explanatory note', () => {
+  const twoTeams = ['Ray', 'Janek'];
+  const tightSettings = {
+    lastRegularSeasonWeek: 4,
+    restrictedWindowStart: 5,
+    restrictedWindowEnd: 13,
+    maxMeetingsPerOpponent: 1,
+  };
+  const generated = generateSeasonSchedule(twoTeams, tightSettings);
+  const failedWeeks = generated.filter((w) => w.opponent === null);
+  assert.ok(failedWeeks.length > 0, 'expected at least one week to fail to find an eligible opponent');
+  failedWeeks.forEach((w) => {
+    assert.equal(w.note, 'no eligible opponent found');
+  });
 });

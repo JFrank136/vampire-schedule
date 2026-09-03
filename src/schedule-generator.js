@@ -31,7 +31,13 @@
       // Marked locked here only so isEligible's scan (which counts locked
       // meetings) sees this pick when evaluating later weeks in this same
       // pass; flipped back to unlocked below since it's still tentative.
-      working.push({ week, opponent, locked: true, result: null, note: '' });
+      working.push({
+        week,
+        opponent,
+        locked: true,
+        result: null,
+        note: opponent ? '' : 'no eligible opponent found',
+      });
       newlyGeneratedWeeks.add(week);
     }
 
