@@ -93,17 +93,23 @@
   }
   textarea:focus, input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-  .row {
-    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-left: 4px solid var(--border);
-    border-radius: var(--radius);
-    padding: 12px 16px;
-    margin-bottom: 8px;
-  }
-  .row.ineligible { opacity: 0.6; }
-  .row.top { border-left-color: var(--accent); }
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .card.top { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .card.ineligible { opacity: 0.6; }
+  .card-top { padding: 12px 14px 8px; cursor: pointer; }
+  .card-name { font-family: 'Oswald', sans-serif; font-size: 17px; font-weight: 600; }
+  .card-stats { display: flex; align-items: baseline; justify-content: space-between; margin-top: 6px; }
+  .card-score { font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .card-margin { font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .card-margin.good { color: var(--good); }
+  .card-margin.bad { color: var(--bad); }
+  .card-strip { font-size: 12px; padding: 6px 14px; }
+  .card-strip.bye { background: var(--warn-bg); color: var(--warn); }
+  .card-strip.injury { background: var(--bad-bg); color: var(--bad); }
+  .card-strip.ineligible { background: var(--surface-2); color: var(--text-2); font-style: italic; }
+  .card-footer { padding: 10px 14px 12px; }
+  .card-footer button { width: 100%; }
 
   table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
   th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
@@ -139,33 +145,14 @@
   }
   #own-score { background: var(--surface-2); border-left-color: var(--accent); margin-bottom: 1.25rem; }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 </head>
 <body>
 <div id="app">
   <div class="tabs">
-    <button class="tab" data-tab="setup">Setup</button>
     <button class="tab active" data-tab="picker">Weekly picker</button>
+    <button class="tab" data-tab="rosters">Rosters</button>
     <button class="tab" data-tab="overview">Season overview</button>
-  </div>
-
-  <div class="panel" id="panel-setup">
-    <h3>Rosters CSV</h3>
-    <textarea id="rosters-input" placeholder="Paste rosters.csv contents here"></textarea>
-    <button id="save-rosters">Save rosters</button>
-    <p id="rosters-status"></p>
-
-    <h3>DraftSharks CSV</h3>
-    <textarea id="draftsharks-input" placeholder="Paste DraftSharks CSV contents here"></textarea>
-    <button id="save-draftsharks">Save DraftSharks data</button>
-    <p id="draftsharks-status"></p>
-
-    <h3>Settings</h3>
-    <div class="field"><label>Last regular season week</label><input type="number" id="setting-last-week" value="14"></div>
-    <div class="field"><label>Restricted window start</label><input type="number" id="setting-window-start" value="5"></div>
-    <div class="field"><label>Restricted window end</label><input type="number" id="setting-window-end" value="13"></div>
-    <div class="field"><label>Max meetings per opponent</label><input type="number" id="setting-max-meetings" value="2"></div>
-    <button id="save-settings">Save settings</button>
-    <p id="settings-status"></p>
   </div>
 
   <div class="panel active" id="panel-picker">
@@ -176,7 +163,19 @@
       <span id="window-badge"></span>
     </div>
     <div id="own-score" class="row"></div>
-    <div id="opponent-list"></div>
+    <div id="opponent-list" class="card-grid"></div>
+  </div>
+
+  <div class="panel" id="panel-rosters">
+    <div class="field">
+      <button id="roster-prev">&larr;</button>
+      <strong id="roster-team-label">Me</strong>
+      <button id="roster-next">&rarr;</button>
+    </div>
+    <table id="roster-table">
+      <thead><tr><th>Slot</th><th>Player</th><th>Position</th><th>3D Value</th><th>Weekly Proj.</th><th>Bye</th></tr></thead>
+      <tbody></tbody>
+    </table>
   </div>
 
   <div class="panel" id="panel-overview">
@@ -201,9 +200,10 @@
   const state = {
     rosters: {},
     draftsharks: {},
-    settings: { lastRegularSeasonWeek: 14, restrictedWindowStart: 5, restrictedWindowEnd: 13, maxMeetingsPerOpponent: 2 },
+    settings: { lastRegularSeasonWeek: 13, restrictedWindowStart: 5, restrictedWindowEnd: 13, maxMeetingsPerOpponent: 2 },
     scheduleWeeks: [],
     currentWeek: 1,
+    rosterIndex: 0,
     db: null,
   };
 
@@ -220,6 +220,7 @@
     document.querySelectorAll('.panel').forEach((el) => el.classList.toggle('active', el.id === 'panel-' + name));
     if (name === 'picker') renderPicker();
     if (name === 'overview') renderOverview();
+    if (name === 'rosters') renderRosters();
   }
 
   document.querySelectorAll('.tab').forEach((el) => {
@@ -254,48 +255,65 @@
     const list = $('opponent-list');
     list.innerHTML = '';
     teams.forEach((entry, index) => {
-      const row = document.createElement('div');
-      row.className = 'row' + (entry.reason ? ' ineligible' : '') + (index === topEligibleIndex && !entry.reason ? ' top' : '');
+      const card = document.createElement('div');
+      card.className = 'card' + (entry.reason ? ' ineligible' : '') + (index === topEligibleIndex && !entry.reason ? ' top' : '');
       const byePlayers = entry.breakdown.filter((p) => p.onBye).map((p) => p.player).join(', ');
       const injured = entry.breakdown.filter((p) => p.injuryRisk !== null && p.injuryRisk >= 40);
       const margin = (myScore - entry.score).toFixed(1);
 
-      const header = document.createElement('div');
-      header.style.display = 'flex';
-      header.style.justifyContent = 'space-between';
-      header.style.width = '100%';
-      header.innerHTML = '<span><strong>' + esc(entry.team) + '</strong>'
-        + (byePlayers ? ' <span class="bye">bye: ' + esc(byePlayers) + '</span>' : '')
-        + (injured.length ? ' <span class="badge">injury risk</span>' : '')
-        + '</span>'
-        + '<span>' + entry.score.toFixed(1) + ' ('
-        + (entry.reason ? entry.reason : (margin >= 0 ? '+' : '') + margin + ' margin')
-        + ')</span>';
-      row.appendChild(header);
+      const top = document.createElement('div');
+      top.className = 'card-top';
+      top.innerHTML = '<div class="card-name">' + esc(entry.team) + '</div>'
+        + '<div class="card-stats"><span class="card-score">' + entry.score.toFixed(1) + '</span>'
+        + '<span class="card-margin ' + (margin >= 0 ? 'good' : 'bad') + '">' + (margin >= 0 ? '+' : '') + margin + '</span></div>';
+      card.appendChild(top);
+
+      if (byePlayers) {
+        const strip = document.createElement('div');
+        strip.className = 'card-strip bye';
+        strip.innerHTML = '<strong>Bye:</strong> ' + esc(byePlayers);
+        card.appendChild(strip);
+      }
+      if (injured.length && !entry.reason) {
+        const strip = document.createElement('div');
+        strip.className = 'card-strip injury';
+        strip.textContent = 'Injury risk on a starter';
+        card.appendChild(strip);
+      }
+      if (entry.reason) {
+        const strip = document.createElement('div');
+        strip.className = 'card-strip ineligible';
+        strip.textContent = entry.reason;
+        card.appendChild(strip);
+      }
 
       const details = document.createElement('table');
       details.style.display = 'none';
-      details.style.marginTop = '6px';
+      details.style.margin = '0 14px 10px';
+      details.style.width = 'calc(100% - 28px)';
       details.innerHTML = '<tbody>' + entry.breakdown.map((p) => (
         '<tr><td>' + esc(p.slot) + '</td><td>' + esc(p.player) + '</td><td>' + p.value.toFixed(1) + '</td>'
         + '<td>' + (p.onBye ? 'bye' : '') + '</td></tr>'
       )).join('') + '</tbody>';
-      row.appendChild(details);
-      header.addEventListener('click', () => {
-        details.style.display = details.style.display === 'none' ? 'block' : 'none';
+      card.appendChild(details);
+      top.addEventListener('click', () => {
+        details.style.display = details.style.display === 'none' ? 'table' : 'none';
       });
 
       if (!entry.reason) {
+        const footer = document.createElement('div');
+        footer.className = 'card-footer';
         const lockButton = document.createElement('button');
         lockButton.textContent = 'Lock in ' + entry.team;
         lockButton.addEventListener('click', (event) => {
           event.stopPropagation();
           lockWeek(state.currentWeek, entry.team);
         });
-        row.appendChild(lockButton);
+        footer.appendChild(lockButton);
+        card.appendChild(footer);
       }
 
-      list.appendChild(row);
+      list.appendChild(card);
     });
   }
 
@@ -357,6 +375,35 @@
     )).join('');
   }
 
+  function renderRosters() {
+    const teamNames = ['Me', ...nonVampireTeams()];
+    if (state.rosterIndex >= teamNames.length) state.rosterIndex = 0;
+    const team = teamNames[state.rosterIndex];
+    $('roster-team-label').textContent = team;
+
+    const players = state.rosters[team] || [];
+    const tbody = document.querySelector('#roster-table tbody');
+    tbody.innerHTML = players.map((p) => {
+      const info = state.draftsharks[p.player];
+      const onBye = info && info.bye === state.currentWeek;
+      const threeD = info && info.threeDValue !== null && info.threeDValue !== undefined ? info.threeDValue.toFixed(1) : '';
+      const weekly = info && info.weeklyProjection !== null && info.weeklyProjection !== undefined ? info.weeklyProjection.toFixed(1) : '';
+      return '<tr><td>' + esc(p.lineupSlot) + '</td><td>' + esc(p.player) + '</td><td>' + esc(p.position) + '</td>'
+        + '<td>' + threeD + '</td><td>' + weekly + '</td><td>' + (onBye ? 'bye' : '') + '</td></tr>';
+    }).join('');
+  }
+
+  $('roster-prev').addEventListener('click', () => {
+    const teamNames = ['Me', ...nonVampireTeams()];
+    state.rosterIndex = (state.rosterIndex - 1 + teamNames.length) % teamNames.length;
+    renderRosters();
+  });
+  $('roster-next').addEventListener('click', () => {
+    const teamNames = ['Me', ...nonVampireTeams()];
+    state.rosterIndex = (state.rosterIndex + 1) % teamNames.length;
+    renderRosters();
+  });
+
   function lockWeek(week, opponent) {
     const updated = { week, opponent, locked: true, result: null, note: '' };
     const existingIndex = state.scheduleWeeks.findIndex((w) => w.week === week);
@@ -364,8 +411,11 @@
     else state.scheduleWeeks.push(updated);
     renderPicker();
     if (state.db) {
-      state.db.collection('schedule').doc('week-' + week).set(updated)
-        .catch(() => { console.error('Failed to lock week ' + week); });
+      state.db.from('vampire_schedule').upsert({
+        week, opponent, locked: true, result: null, note: '',
+      }).then(({ error }) => {
+        if (error) console.error('Failed to lock week ' + week, error);
+      });
     }
   }
 
@@ -374,7 +424,13 @@
     if (index < 0) return;
     const updated = { ...state.scheduleWeeks[index], result, note };
     state.scheduleWeeks[index] = updated;
-    if (state.db) state.db.collection('schedule').doc('week-' + week).set(updated);
+    if (state.db) {
+      state.db.from('vampire_schedule').upsert({
+        week, opponent: updated.opponent, locked: updated.locked, result, note,
+      }).then(({ error }) => {
+        if (error) console.error('Failed to update week ' + week, error);
+      });
+    }
     renderOverview();
   }
 
@@ -387,100 +443,97 @@
     renderPicker();
   });
 
-  $('save-rosters').addEventListener('click', () => {
-    const parsed = parseRosters($('rosters-input').value);
-    state.rosters = parsed;
-    const teamCount = Object.keys(parsed).length;
-    if (state.db) {
-      $('rosters-status').textContent = 'Saving...';
-      state.db.doc('data/rosters').set(parsed)
-        .then(() => { $('rosters-status').textContent = 'Saved ' + teamCount + ' teams.'; })
-        .catch(() => { $('rosters-status').textContent = 'Save failed - check your connection and try again.'; });
-    } else {
-      $('rosters-status').textContent = 'Saved ' + teamCount + ' teams (local only, no shared storage available).';
-    }
-  });
-
-  $('save-draftsharks').addEventListener('click', () => {
-    const parsed = parseDraftSharks($('draftsharks-input').value);
-    state.draftsharks = parsed;
-    const playerCount = Object.keys(parsed).length;
-    if (state.db) {
-      $('draftsharks-status').textContent = 'Saving...';
-      state.db.doc('data/draftsharks').set(parsed)
-        .then(() => { $('draftsharks-status').textContent = 'Saved ' + playerCount + ' players.'; })
-        .catch(() => { $('draftsharks-status').textContent = 'Save failed - check your connection and try again.'; });
-    } else {
-      $('draftsharks-status').textContent = 'Saved ' + playerCount + ' players (local only, no shared storage available).';
-    }
-  });
-
-  $('save-settings').addEventListener('click', () => {
-    const settings = {
-      lastRegularSeasonWeek: Number($('setting-last-week').value),
-      restrictedWindowStart: Number($('setting-window-start').value),
-      restrictedWindowEnd: Number($('setting-window-end').value),
-      maxMeetingsPerOpponent: Number($('setting-max-meetings').value),
-    };
-    if (Object.values(settings).some((v) => Number.isNaN(v))) {
-      $('settings-status').textContent = 'All settings must be numbers.';
-      return;
-    }
-    state.settings = settings;
-    if (state.db) {
-      $('settings-status').textContent = 'Saving...';
-      state.db.doc('data/settings').set(settings)
-        .then(() => { $('settings-status').textContent = 'Settings saved.'; })
-        .catch(() => { $('settings-status').textContent = 'Save failed - check your connection and try again.'; });
-    } else {
-      $('settings-status').textContent = 'Settings saved (local only, no shared storage available).';
-    }
-  });
-
-  $('generate-schedule').addEventListener('click', () => {
+  $('generate-schedule').addEventListener('click', async () => {
     const teams = nonVampireTeams();
     const generated = generateSeasonSchedule(teams, state.settings, state.scheduleWeeks);
     state.scheduleWeeks = generated;
     if (state.db) {
-      generated.forEach((entry) => {
-        state.db.collection('schedule').doc('week-' + entry.week).set(entry);
-      });
+      const { error } = await state.db.from('vampire_schedule').upsert(generated.map((entry) => ({
+        week: entry.week, opponent: entry.opponent, locked: entry.locked, result: entry.result, note: entry.note || '',
+      })));
+      if (error) console.error('Failed to save generated schedule', error);
     }
     renderOverview();
   });
 
-  async function init() {
-    if (typeof claude === 'undefined' || !claude.use) {
-      renderPicker();
-      renderOverview();
-      return;
-    }
-    const db = await claude.use('db');
-    state.db = db;
-    if (!db) {
-      renderPicker();
-      renderOverview();
-      return;
-    }
+  const SUPABASE_URL = 'https://tdtchffawcmkvgrccjza.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_7T_APoP6DNIpgI5QOsaY0g_qs_uhsRs';
 
-    db.doc('data/rosters').onSnapshot((snap) => {
-      state.rosters = snap.exists ? snap.data() : {};
-      renderPicker();
-    });
-    db.doc('data/draftsharks').onSnapshot((snap) => {
-      state.draftsharks = snap.exists ? snap.data() : {};
-      renderPicker();
-    });
-    db.doc('data/settings').onSnapshot((snap) => {
-      if (snap.exists) state.settings = snap.data();
+  function rowsToRosters(rows) {
+    const rosters = {};
+    for (const row of rows) {
+      if (!rosters[row.team]) rosters[row.team] = [];
+      rosters[row.team].push({
+        player: row.player, position: row.position, lineupSlot: row.lineup_slot, starter: row.starter,
+      });
+    }
+    return rosters;
+  }
+
+  function rowsToPlayerValues(rows) {
+    const players = {};
+    for (const row of rows) {
+      players[row.player] = {
+        team: row.team, position: row.position, bye: row.bye,
+        injuryRisk: row.injury_risk, threeDValue: row.three_d_value, weeklyProjection: row.weekly_projection,
+      };
+    }
+    return players;
+  }
+
+  function rowToScheduleWeek(row) {
+    return { week: row.week, opponent: row.opponent, locked: row.locked, result: row.result, note: row.note || '' };
+  }
+
+  async function loadRosters(supabase) {
+    const { data } = await supabase.from('vampire_rosters').select('*');
+    state.rosters = rowsToRosters(data || []);
+  }
+  async function loadPlayerValues(supabase) {
+    const { data } = await supabase.from('vampire_player_values').select('*');
+    state.draftsharks = rowsToPlayerValues(data || []);
+  }
+  async function loadSettings(supabase) {
+    const { data } = await supabase.from('vampire_settings').select('*').single();
+    if (data) {
+      state.settings = {
+        lastRegularSeasonWeek: data.last_regular_season_week,
+        restrictedWindowStart: data.restricted_window_start,
+        restrictedWindowEnd: data.restricted_window_end,
+        maxMeetingsPerOpponent: data.max_meetings_per_opponent,
+      };
+    }
+  }
+  async function loadSchedule(supabase) {
+    const { data } = await supabase.from('vampire_schedule').select('*').order('week');
+    state.scheduleWeeks = (data || []).map(rowToScheduleWeek);
+  }
+
+  async function init() {
+    if (typeof window.supabase === 'undefined') {
       renderPicker();
       renderOverview();
-    });
-    db.collection('schedule').onSnapshot((querySnap) => {
-      state.scheduleWeeks = querySnap.docs.map((d) => d.data());
-      renderPicker();
-      renderOverview();
-    });
+      return;
+    }
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    state.db = supabase;
+
+    await Promise.all([
+      loadRosters(supabase),
+      loadPlayerValues(supabase),
+      loadSettings(supabase),
+      loadSchedule(supabase),
+    ]);
+    renderPicker();
+    renderOverview();
+
+    supabase.channel('vampire_schedule_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vampire_schedule' }, async () => {
+        await loadSchedule(supabase);
+        renderPicker();
+        renderOverview();
+      })
+      .subscribe();
   }
 
   init();
