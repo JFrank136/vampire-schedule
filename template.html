@@ -93,6 +93,12 @@
 
   function $(id) { return document.getElementById(id); }
 
+  function esc(str) {
+    return String(str == null ? '' : str).replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+  }
+
   function switchTab(name) {
     document.querySelectorAll('.tab').forEach((el) => el.classList.toggle('active', el.dataset.tab === name));
     document.querySelectorAll('.panel').forEach((el) => el.classList.toggle('active', el.id === 'panel-' + name));
@@ -127,11 +133,13 @@
       return { team, score, breakdown, reason };
     }).sort((a, b) => a.score - b.score);
 
+    const topEligibleIndex = teams.findIndex((t) => !t.reason);
+
     const list = $('opponent-list');
     list.innerHTML = '';
     teams.forEach((entry, index) => {
       const row = document.createElement('div');
-      row.className = 'row' + (entry.reason ? ' ineligible' : '') + (index === 0 && !entry.reason ? ' top' : '');
+      row.className = 'row' + (entry.reason ? ' ineligible' : '') + (index === topEligibleIndex && !entry.reason ? ' top' : '');
       const byePlayers = entry.breakdown.filter((p) => p.onBye).map((p) => p.player).join(', ');
       const injured = entry.breakdown.filter((p) => p.injuryRisk !== null && p.injuryRisk >= 40);
       const margin = (myScore - entry.score).toFixed(1);
@@ -140,8 +148,8 @@
       header.style.display = 'flex';
       header.style.justifyContent = 'space-between';
       header.style.width = '100%';
-      header.innerHTML = '<span><strong>' + entry.team + '</strong>'
-        + (byePlayers ? ' <span class="bye">bye: ' + byePlayers + '</span>' : '')
+      header.innerHTML = '<span><strong>' + esc(entry.team) + '</strong>'
+        + (byePlayers ? ' <span class="bye">bye: ' + esc(byePlayers) + '</span>' : '')
         + (injured.length ? ' <span class="badge">injury risk</span>' : '')
         + '</span>'
         + '<span>' + entry.score.toFixed(1) + ' ('
@@ -153,7 +161,7 @@
       details.style.display = 'none';
       details.style.marginTop = '6px';
       details.innerHTML = '<tbody>' + entry.breakdown.map((p) => (
-        '<tr><td>' + p.slot + '</td><td>' + p.player + '</td><td>' + p.value.toFixed(1) + '</td>'
+        '<tr><td>' + esc(p.slot) + '</td><td>' + esc(p.player) + '</td><td>' + p.value.toFixed(1) + '</td>'
         + '<td>' + (p.onBye ? 'bye' : '') + '</td></tr>'
       )).join('') + '</tbody>';
       row.appendChild(details);
@@ -229,7 +237,7 @@
     const counts = meetingCounts(state.scheduleWeeks);
     const meetingsBody = document.querySelector('#meetings-table tbody');
     meetingsBody.innerHTML = nonVampireTeams().map((team) => (
-      '<tr><td>' + team + '</td><td>' + (counts[team] || 0) + '</td></tr>'
+      '<tr><td>' + esc(team) + '</td><td>' + (counts[team] || 0) + '</td></tr>'
     )).join('');
   }
 
@@ -243,7 +251,7 @@
       if (existingIndex >= 0) state.scheduleWeeks[existingIndex] = updated;
       else state.scheduleWeeks.push(updated);
       renderPicker();
-    });
+    }).catch(() => { console.error('Failed to lock week ' + week); });
   }
 
   function updateWeekResult(week, result, note) {
@@ -267,15 +275,29 @@
   $('save-rosters').addEventListener('click', () => {
     const parsed = parseRosters($('rosters-input').value);
     state.rosters = parsed;
-    if (state.db) state.db.doc('data/rosters').set(parsed);
-    $('rosters-status').textContent = 'Saved ' + Object.keys(parsed).length + ' teams.';
+    const teamCount = Object.keys(parsed).length;
+    if (state.db) {
+      $('rosters-status').textContent = 'Saving...';
+      state.db.doc('data/rosters').set(parsed)
+        .then(() => { $('rosters-status').textContent = 'Saved ' + teamCount + ' teams.'; })
+        .catch(() => { $('rosters-status').textContent = 'Save failed - check your connection and try again.'; });
+    } else {
+      $('rosters-status').textContent = 'Saved ' + teamCount + ' teams (local only, no shared storage available).';
+    }
   });
 
   $('save-draftsharks').addEventListener('click', () => {
     const parsed = parseDraftSharks($('draftsharks-input').value);
     state.draftsharks = parsed;
-    if (state.db) state.db.doc('data/draftsharks').set(parsed);
-    $('draftsharks-status').textContent = 'Saved ' + Object.keys(parsed).length + ' players.';
+    const playerCount = Object.keys(parsed).length;
+    if (state.db) {
+      $('draftsharks-status').textContent = 'Saving...';
+      state.db.doc('data/draftsharks').set(parsed)
+        .then(() => { $('draftsharks-status').textContent = 'Saved ' + playerCount + ' players.'; })
+        .catch(() => { $('draftsharks-status').textContent = 'Save failed - check your connection and try again.'; });
+    } else {
+      $('draftsharks-status').textContent = 'Saved ' + playerCount + ' players (local only, no shared storage available).';
+    }
   });
 
   $('save-settings').addEventListener('click', () => {
@@ -285,9 +307,19 @@
       restrictedWindowEnd: Number($('setting-window-end').value),
       maxMeetingsPerOpponent: Number($('setting-max-meetings').value),
     };
+    if (Object.values(settings).some((v) => Number.isNaN(v))) {
+      $('settings-status').textContent = 'All settings must be numbers.';
+      return;
+    }
     state.settings = settings;
-    if (state.db) state.db.doc('data/settings').set(settings);
-    $('settings-status').textContent = 'Settings saved.';
+    if (state.db) {
+      $('settings-status').textContent = 'Saving...';
+      state.db.doc('data/settings').set(settings)
+        .then(() => { $('settings-status').textContent = 'Settings saved.'; })
+        .catch(() => { $('settings-status').textContent = 'Save failed - check your connection and try again.'; });
+    } else {
+      $('settings-status').textContent = 'Settings saved (local only, no shared storage available).';
+    }
   });
 
   $('generate-schedule').addEventListener('click', () => {
