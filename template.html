@@ -83,7 +83,7 @@
     border-bottom: 2px solid transparent;
     margin-bottom: -1px;
   }
-  .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
   .panel { display: none; }
   .panel.active { display: block; }
 
@@ -91,9 +91,10 @@
 
   .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-  .card.top { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .card.top { border-color: var(--border); border-left: 3px solid var(--accent); }
   .card.ineligible { opacity: 0.6; }
   .card-top { padding: 12px 14px 8px; cursor: pointer; }
+  .card-eyebrow { font-family: 'Oswald', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); margin-bottom: 2px; }
   .card-name { font-family: 'Oswald', sans-serif; font-size: 17px; font-weight: 600; }
   .card-stats { display: flex; align-items: baseline; justify-content: space-between; margin-top: 6px; }
   .card-score { font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; }
@@ -258,7 +259,8 @@
 
       const top = document.createElement('div');
       top.className = 'card-top';
-      top.innerHTML = '<div class="card-name">' + esc(entry.team) + '</div>'
+      top.innerHTML = (index === topEligibleIndex && !entry.reason ? '<div class="card-eyebrow">Weakest opponent</div>' : '')
+        + '<div class="card-name">' + esc(entry.team) + '</div>'
         + '<div class="card-stats"><span class="card-score">' + entry.score.toFixed(1) + '</span>'
         + '<span class="card-margin ' + (margin >= 0 ? 'good' : 'bad') + '">' + (margin >= 0 ? '+' : '') + margin + '</span></div>';
       card.appendChild(top);
