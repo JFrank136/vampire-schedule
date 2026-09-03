@@ -26,6 +26,15 @@ async function main() {
   const rosterRows = buildRosterRows(parseRosters(rostersText));
   const playerValueRows = buildPlayerValueRows(parseDraftSharks(draftsharksText));
 
+  if (rosterRows.length === 0) {
+    console.error(`Refusing to wipe vampire_rosters: parsed 0 rows from ${rostersPath}. Check the file and try again.`);
+    process.exit(1);
+  }
+  if (playerValueRows.length === 0) {
+    console.error(`Refusing to wipe vampire_player_values: parsed 0 rows from ${draftsharksPath}. Check the file and try again.`);
+    process.exit(1);
+  }
+
   const supabase = createClient(url, serviceKey);
 
   console.log(`Replacing ${rosterRows.length} roster rows...`);
