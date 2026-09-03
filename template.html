@@ -87,11 +87,7 @@
   .panel { display: none; }
   .panel.active { display: block; }
 
-  textarea {
-    width: 100%; height: 140px; font-family: 'IBM Plex Mono', monospace; font-size: 12px;
-    background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px;
-  }
-  textarea:focus, input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 
   .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
@@ -123,17 +119,15 @@
     background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius);
   }
   button:hover { border-color: var(--accent); color: var(--accent); }
-  #app > .panel button[id^="save-"], #generate-schedule {
+  #generate-schedule {
     background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
   }
-  #app > .panel button[id^="save-"]:hover, #generate-schedule:hover { opacity: 0.9; color: var(--accent-ink); }
+  #generate-schedule:hover { opacity: 0.9; color: var(--accent-ink); }
 
-  input[type=number], input[type=text], select {
+  input[type=text], select {
     font-family: 'IBM Plex Mono', monospace; font-size: 13px;
     background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px;
   }
-  input[type=number] { width: 64px; }
-  label { font-size: 13px; color: var(--text-2); margin-right: 8px; }
   .field { margin-bottom: 10px; display: flex; align-items: center; gap: 4px; }
   p[id$="-status"] { font-size: 13px; color: var(--text-2); min-height: 1.2em; }
 
