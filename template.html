@@ -358,16 +358,15 @@
   }
 
   function lockWeek(week, opponent) {
-    if (!state.db) return;
-    state.db.collection('schedule').doc('week-' + week).set({
-      week, opponent, locked: true, result: null, note: '',
-    }).then(() => {
-      const existingIndex = state.scheduleWeeks.findIndex((w) => w.week === week);
-      const updated = { week, opponent, locked: true, result: null, note: '' };
-      if (existingIndex >= 0) state.scheduleWeeks[existingIndex] = updated;
-      else state.scheduleWeeks.push(updated);
-      renderPicker();
-    }).catch(() => { console.error('Failed to lock week ' + week); });
+    const updated = { week, opponent, locked: true, result: null, note: '' };
+    const existingIndex = state.scheduleWeeks.findIndex((w) => w.week === week);
+    if (existingIndex >= 0) state.scheduleWeeks[existingIndex] = updated;
+    else state.scheduleWeeks.push(updated);
+    renderPicker();
+    if (state.db) {
+      state.db.collection('schedule').doc('week-' + week).set(updated)
+        .catch(() => { console.error('Failed to lock week ' + week); });
+    }
   }
 
   function updateWeekResult(week, result, note) {
