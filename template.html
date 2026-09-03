@@ -154,6 +154,7 @@
     <button class="tab" data-tab="rosters">Rosters</button>
     <button class="tab" data-tab="overview">Season overview</button>
   </div>
+  <p id="sync-status"></p>
 
   <div class="panel active" id="panel-picker">
     <div class="field">
@@ -414,7 +415,12 @@
       state.db.from('vampire_schedule').upsert({
         week, opponent, locked: true, result: null, note: '',
       }).then(({ error }) => {
-        if (error) console.error('Failed to lock week ' + week, error);
+        if (error) {
+          console.error('Failed to lock week ' + week, error);
+          $('sync-status').textContent = 'Failed to save — check your connection and try again.';
+        } else {
+          $('sync-status').textContent = '';
+        }
       });
     }
   }
@@ -428,7 +434,12 @@
       state.db.from('vampire_schedule').upsert({
         week, opponent: updated.opponent, locked: updated.locked, result, note,
       }).then(({ error }) => {
-        if (error) console.error('Failed to update week ' + week, error);
+        if (error) {
+          console.error('Failed to update week ' + week, error);
+          $('sync-status').textContent = 'Failed to save — check your connection and try again.';
+        } else {
+          $('sync-status').textContent = '';
+        }
       });
     }
     renderOverview();
@@ -451,7 +462,12 @@
       const { error } = await state.db.from('vampire_schedule').upsert(generated.map((entry) => ({
         week: entry.week, opponent: entry.opponent, locked: entry.locked, result: entry.result, note: entry.note || '',
       })));
-      if (error) console.error('Failed to save generated schedule', error);
+      if (error) {
+        console.error('Failed to save generated schedule', error);
+        $('sync-status').textContent = 'Failed to save — check your connection and try again.';
+      } else {
+        $('sync-status').textContent = '';
+      }
     }
     renderOverview();
   });
@@ -486,15 +502,17 @@
   }
 
   async function loadRosters(supabase) {
-    const { data } = await supabase.from('vampire_rosters').select('*');
+    const { data, error } = await supabase.from('vampire_rosters').select('*');
     state.rosters = rowsToRosters(data || []);
+    return error;
   }
   async function loadPlayerValues(supabase) {
-    const { data } = await supabase.from('vampire_player_values').select('*');
+    const { data, error } = await supabase.from('vampire_player_values').select('*');
     state.draftsharks = rowsToPlayerValues(data || []);
+    return error;
   }
   async function loadSettings(supabase) {
-    const { data } = await supabase.from('vampire_settings').select('*').single();
+    const { data, error } = await supabase.from('vampire_settings').select('*').single();
     if (data) {
       state.settings = {
         lastRegularSeasonWeek: data.last_regular_season_week,
@@ -503,10 +521,12 @@
         maxMeetingsPerOpponent: data.max_meetings_per_opponent,
       };
     }
+    return error;
   }
   async function loadSchedule(supabase) {
-    const { data } = await supabase.from('vampire_schedule').select('*').order('week');
+    const { data, error } = await supabase.from('vampire_schedule').select('*').order('week');
     state.scheduleWeeks = (data || []).map(rowToScheduleWeek);
+    return error;
   }
 
   async function init() {
@@ -518,12 +538,15 @@
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     state.db = supabase;
 
-    await Promise.all([
+    const errors = await Promise.all([
       loadRosters(supabase),
       loadPlayerValues(supabase),
       loadSettings(supabase),
       loadSchedule(supabase),
     ]);
+    $('sync-status').textContent = errors.some(Boolean)
+      ? 'Could not load the latest data — check your connection and reload.'
+      : '';
     renderPicker();
     renderOverview();
 
