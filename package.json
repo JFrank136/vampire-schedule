@@ -1,0 +1,13 @@
+{
+  "name": "vampire-matchup-tool",
+  "version": "1.1.0",
+  "private": true,
+  "scripts": {
+    "build": "node build.js",
+    "test": "node --test tests/*.test.js",
+    "refresh-data": "node --env-file=.env scripts/refresh-data.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4"
+  }
+}
