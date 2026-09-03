@@ -1,10 +1,330 @@
 <!doctype html>
 <html>
-<head><meta charset="utf-8"><title>Vampire Matchup Picker</title></head>
+<head>
+<meta charset="utf-8">
+<title>Vampire Matchup Picker</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 1rem; color: #1a1a1a; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 1rem; border-bottom: 1px solid #ddd; }
+  .tab { padding: 8px 14px; cursor: pointer; border: none; background: none; font-size: 14px; }
+  .tab.active { border-bottom: 2px solid #333; font-weight: 600; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  textarea { width: 100%; height: 140px; font-family: monospace; font-size: 12px; }
+  .row { display: flex; align-items: center; justify-content: space-between; border: 1px solid #ddd; border-radius: 6px; padding: 10px 14px; margin-bottom: 8px; }
+  .row.ineligible { opacity: 0.55; }
+  .row.top { border-color: #4a7; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid #eee; }
+  .bye { color: #b33; }
+  .badge { font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #fee; color: #b33; }
+  button { cursor: pointer; padding: 6px 12px; }
+  input[type=number] { width: 60px; }
+  label { font-size: 13px; margin-right: 4px; }
+  .field { margin-bottom: 8px; }
+</style>
+</head>
 <body>
-<div id="app">loading</div>
+<div id="app">
+  <div class="tabs">
+    <button class="tab active" data-tab="setup">Setup</button>
+    <button class="tab" data-tab="picker">Weekly picker</button>
+    <button class="tab" data-tab="overview">Season overview</button>
+  </div>
+
+  <div class="panel active" id="panel-setup">
+    <h3>Rosters CSV</h3>
+    <textarea id="rosters-input" placeholder="Paste rosters.csv contents here"></textarea>
+    <button id="save-rosters">Save rosters</button>
+    <p id="rosters-status"></p>
+
+    <h3>DraftSharks CSV</h3>
+    <textarea id="draftsharks-input" placeholder="Paste DraftSharks CSV contents here"></textarea>
+    <button id="save-draftsharks">Save DraftSharks data</button>
+    <p id="draftsharks-status"></p>
+
+    <h3>Settings</h3>
+    <div class="field"><label>Last regular season week</label><input type="number" id="setting-last-week" value="14"></div>
+    <div class="field"><label>Restricted window start</label><input type="number" id="setting-window-start" value="5"></div>
+    <div class="field"><label>Restricted window end</label><input type="number" id="setting-window-end" value="13"></div>
+    <div class="field"><label>Max meetings per opponent</label><input type="number" id="setting-max-meetings" value="2"></div>
+    <button id="save-settings">Save settings</button>
+    <p id="settings-status"></p>
+  </div>
+
+  <div class="panel" id="panel-picker">
+    <div class="field">
+      <button id="week-prev">&larr;</button>
+      <strong id="week-label">Week 1</strong>
+      <button id="week-next">&rarr;</button>
+      <span id="window-badge"></span>
+    </div>
+    <div id="own-score" class="row"></div>
+    <div id="opponent-list"></div>
+  </div>
+
+  <div class="panel" id="panel-overview">
+    <button id="generate-schedule">Generate / refresh season schedule</button>
+    <table id="overview-table">
+      <thead><tr><th>Week</th><th>Opponent</th><th>Status</th><th>Result</th><th>Note</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <h4>Meetings so far</h4>
+    <table id="meetings-table">
+      <thead><tr><th>Team</th><th>Times played</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
 <script>
 /* LOGIC_INJECTION_POINT */
+</script>
+<script>
+(function () {
+  const state = {
+    rosters: {},
+    draftsharks: {},
+    settings: { lastRegularSeasonWeek: 14, restrictedWindowStart: 5, restrictedWindowEnd: 13, maxMeetingsPerOpponent: 2 },
+    scheduleWeeks: [],
+    currentWeek: 1,
+    db: null,
+  };
+
+  function $(id) { return document.getElementById(id); }
+
+  function switchTab(name) {
+    document.querySelectorAll('.tab').forEach((el) => el.classList.toggle('active', el.dataset.tab === name));
+    document.querySelectorAll('.panel').forEach((el) => el.classList.toggle('active', el.id === 'panel-' + name));
+    if (name === 'picker') renderPicker();
+    if (name === 'overview') renderOverview();
+  }
+
+  document.querySelectorAll('.tab').forEach((el) => {
+    el.addEventListener('click', () => switchTab(el.dataset.tab));
+  });
+
+  function nonVampireTeams() {
+    return Object.keys(state.rosters).filter((t) => t !== 'Me');
+  }
+
+  function renderPicker() {
+    $('week-label').textContent = 'Week ' + state.currentWeek;
+    $('window-badge').textContent = isRestrictedWeek(state.currentWeek, state.settings)
+      ? 'restricted window · once each'
+      : '';
+
+    const me = state.rosters.Me || [];
+    const myScore = teamWeekScore(me, state.draftsharks, state.currentWeek);
+    $('own-score').innerHTML = '<div><div style="font-size:12px;color:#777">Your projected score (Me)</div>'
+      + '<div style="font-size:22px;font-weight:600">' + myScore.toFixed(1) + '</div></div>';
+
+    const teams = nonVampireTeams().map((team) => {
+      const players = state.rosters[team] || [];
+      const score = teamWeekScore(players, state.draftsharks, state.currentWeek);
+      const breakdown = teamWeekBreakdown(players, state.draftsharks, state.currentWeek);
+      const reason = ineligibilityReason(team, state.currentWeek, state.scheduleWeeks, state.settings);
+      return { team, score, breakdown, reason };
+    }).sort((a, b) => a.score - b.score);
+
+    const list = $('opponent-list');
+    list.innerHTML = '';
+    teams.forEach((entry, index) => {
+      const row = document.createElement('div');
+      row.className = 'row' + (entry.reason ? ' ineligible' : '') + (index === 0 && !entry.reason ? ' top' : '');
+      const byePlayers = entry.breakdown.filter((p) => p.onBye).map((p) => p.player).join(', ');
+      const injured = entry.breakdown.filter((p) => p.injuryRisk !== null && p.injuryRisk >= 40);
+      const margin = (myScore - entry.score).toFixed(1);
+
+      const header = document.createElement('div');
+      header.style.display = 'flex';
+      header.style.justifyContent = 'space-between';
+      header.style.width = '100%';
+      header.innerHTML = '<span><strong>' + entry.team + '</strong>'
+        + (byePlayers ? ' <span class="bye">bye: ' + byePlayers + '</span>' : '')
+        + (injured.length ? ' <span class="badge">injury risk</span>' : '')
+        + '</span>'
+        + '<span>' + entry.score.toFixed(1) + ' ('
+        + (entry.reason ? entry.reason : (margin >= 0 ? '+' : '') + margin + ' margin')
+        + ')</span>';
+      row.appendChild(header);
+
+      const details = document.createElement('table');
+      details.style.display = 'none';
+      details.style.marginTop = '6px';
+      details.innerHTML = '<tbody>' + entry.breakdown.map((p) => (
+        '<tr><td>' + p.slot + '</td><td>' + p.player + '</td><td>' + p.value.toFixed(1) + '</td>'
+        + '<td>' + (p.onBye ? 'bye' : '') + '</td></tr>'
+      )).join('') + '</tbody>';
+      row.appendChild(details);
+      header.addEventListener('click', () => {
+        details.style.display = details.style.display === 'none' ? 'block' : 'none';
+      });
+
+      if (!entry.reason) {
+        const lockButton = document.createElement('button');
+        lockButton.textContent = 'Lock in ' + entry.team;
+        lockButton.addEventListener('click', (event) => {
+          event.stopPropagation();
+          lockWeek(state.currentWeek, entry.team);
+        });
+        row.appendChild(lockButton);
+      }
+
+      list.appendChild(row);
+    });
+  }
+
+  function renderOverview() {
+    const tbody = document.querySelector('#overview-table tbody');
+    tbody.innerHTML = '';
+    for (let week = 1; week <= state.settings.lastRegularSeasonWeek; week += 1) {
+      const entry = state.scheduleWeeks.find((w) => w.week === week) || { opponent: null, locked: false, result: null, note: '' };
+      const tr = document.createElement('tr');
+
+      const weekCell = document.createElement('td');
+      weekCell.textContent = week;
+      const opponentCell = document.createElement('td');
+      opponentCell.textContent = entry.opponent || '—';
+      const statusCell = document.createElement('td');
+      statusCell.textContent = entry.locked ? 'locked' : (entry.opponent ? 'tentative' : '');
+      tr.appendChild(weekCell);
+      tr.appendChild(opponentCell);
+      tr.appendChild(statusCell);
+
+      const resultCell = document.createElement('td');
+      if (entry.locked) {
+        const select = document.createElement('select');
+        ['', 'W', 'L'].forEach((value) => {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = value || '—';
+          if ((entry.result || '') === value) option.selected = true;
+          select.appendChild(option);
+        });
+        select.addEventListener('change', () => {
+          updateWeekResult(week, select.value || null, entry.note || '');
+        });
+        resultCell.appendChild(select);
+      }
+      tr.appendChild(resultCell);
+
+      const noteCell = document.createElement('td');
+      if (entry.locked) {
+        const noteInput = document.createElement('input');
+        noteInput.type = 'text';
+        noteInput.style.width = '180px';
+        noteInput.placeholder = 'e.g. stole M. Evans for J. Reed';
+        noteInput.value = entry.note || '';
+        noteInput.addEventListener('change', () => {
+          updateWeekResult(week, entry.result || null, noteInput.value);
+        });
+        noteCell.appendChild(noteInput);
+      }
+      tr.appendChild(noteCell);
+
+      tbody.appendChild(tr);
+    }
+
+    const counts = meetingCounts(state.scheduleWeeks);
+    const meetingsBody = document.querySelector('#meetings-table tbody');
+    meetingsBody.innerHTML = nonVampireTeams().map((team) => (
+      '<tr><td>' + team + '</td><td>' + (counts[team] || 0) + '</td></tr>'
+    )).join('');
+  }
+
+  function updateWeekResult(week, result, note) {
+    const index = state.scheduleWeeks.findIndex((w) => w.week === week);
+    if (index < 0) return;
+    const updated = { ...state.scheduleWeeks[index], result, note };
+    state.scheduleWeeks[index] = updated;
+    if (state.db) state.db.collection('schedule').doc('week-' + week).set(updated);
+    renderOverview();
+  }
+
+  $('week-prev').addEventListener('click', () => {
+    state.currentWeek = Math.max(1, state.currentWeek - 1);
+    renderPicker();
+  });
+  $('week-next').addEventListener('click', () => {
+    state.currentWeek = Math.min(state.settings.lastRegularSeasonWeek, state.currentWeek + 1);
+    renderPicker();
+  });
+
+  $('save-rosters').addEventListener('click', () => {
+    const parsed = parseRosters($('rosters-input').value);
+    state.rosters = parsed;
+    if (state.db) state.db.doc('data/rosters').set(parsed);
+    $('rosters-status').textContent = 'Saved ' + Object.keys(parsed).length + ' teams.';
+  });
+
+  $('save-draftsharks').addEventListener('click', () => {
+    const parsed = parseDraftSharks($('draftsharks-input').value);
+    state.draftsharks = parsed;
+    if (state.db) state.db.doc('data/draftsharks').set(parsed);
+    $('draftsharks-status').textContent = 'Saved ' + Object.keys(parsed).length + ' players.';
+  });
+
+  $('save-settings').addEventListener('click', () => {
+    const settings = {
+      lastRegularSeasonWeek: Number($('setting-last-week').value),
+      restrictedWindowStart: Number($('setting-window-start').value),
+      restrictedWindowEnd: Number($('setting-window-end').value),
+      maxMeetingsPerOpponent: Number($('setting-max-meetings').value),
+    };
+    state.settings = settings;
+    if (state.db) state.db.doc('data/settings').set(settings);
+    $('settings-status').textContent = 'Settings saved.';
+  });
+
+  $('generate-schedule').addEventListener('click', () => {
+    const teams = nonVampireTeams();
+    const generated = generateSeasonSchedule(teams, state.settings, state.scheduleWeeks);
+    state.scheduleWeeks = generated;
+    if (state.db) {
+      generated.forEach((entry) => {
+        state.db.collection('schedule').doc('week-' + entry.week).set(entry);
+      });
+    }
+    renderOverview();
+  });
+
+  async function init() {
+    if (typeof claude === 'undefined' || !claude.use) {
+      renderPicker();
+      renderOverview();
+      return;
+    }
+    const db = await claude.use('db');
+    state.db = db;
+    if (!db) {
+      renderPicker();
+      renderOverview();
+      return;
+    }
+
+    db.doc('data/rosters').onSnapshot((snap) => {
+      state.rosters = snap.exists ? snap.data() : {};
+      renderPicker();
+    });
+    db.doc('data/draftsharks').onSnapshot((snap) => {
+      state.draftsharks = snap.exists ? snap.data() : {};
+      renderPicker();
+    });
+    db.doc('data/settings').onSnapshot((snap) => {
+      if (snap.exists) state.settings = snap.data();
+      renderPicker();
+      renderOverview();
+    });
+    db.collection('schedule').onSnapshot((querySnap) => {
+      state.scheduleWeeks = querySnap.docs.map((d) => d.data());
+      renderPicker();
+      renderOverview();
+    });
+  }
+
+  init();
+})();
 </script>
 </body>
 </html>
