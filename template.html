@@ -143,12 +143,12 @@
 <body>
 <div id="app">
   <div class="tabs">
-    <button class="tab active" data-tab="setup">Setup</button>
-    <button class="tab" data-tab="picker">Weekly picker</button>
+    <button class="tab" data-tab="setup">Setup</button>
+    <button class="tab active" data-tab="picker">Weekly picker</button>
     <button class="tab" data-tab="overview">Season overview</button>
   </div>
 
-  <div class="panel active" id="panel-setup">
+  <div class="panel" id="panel-setup">
     <h3>Rosters CSV</h3>
     <textarea id="rosters-input" placeholder="Paste rosters.csv contents here"></textarea>
     <button id="save-rosters">Save rosters</button>
@@ -168,7 +168,7 @@
     <p id="settings-status"></p>
   </div>
 
-  <div class="panel" id="panel-picker">
+  <div class="panel active" id="panel-picker">
     <div class="field">
       <button id="week-prev">&larr;</button>
       <strong id="week-label">Week 1</strong>
