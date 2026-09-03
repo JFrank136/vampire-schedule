@@ -3,25 +3,141 @@
 <head>
 <meta charset="utf-8">
 <title>Vampire Matchup Picker</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 1rem; color: #1a1a1a; }
-  .tabs { display: flex; gap: 8px; margin-bottom: 1rem; border-bottom: 1px solid #ddd; }
-  .tab { padding: 8px 14px; cursor: pointer; border: none; background: none; font-size: 14px; }
-  .tab.active { border-bottom: 2px solid #333; font-weight: 600; }
+  :root {
+    --bg: #faf9f6;
+    --surface: #ffffff;
+    --surface-2: #f2efe9;
+    --border: #e3dfd8;
+    --text: #221a1c;
+    --text-2: #6e6560;
+    --accent: #7a2333;
+    --accent-ink: #ffffff;
+    --good: #2f6e4e;
+    --good-bg: #e7f1ea;
+    --bad: #b23a3a;
+    --bad-bg: #fbeaea;
+    --warn: #8a6a12;
+    --warn-bg: #faf1dc;
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #18120f;
+      --surface: #221a17;
+      --surface-2: #2b2119;
+      --border: #3c2f28;
+      --text: #f3ece7;
+      --text-2: #b7a99e;
+      --accent: #d1607a;
+      --accent-ink: #241014;
+      --good: #6bbf94;
+      --good-bg: #1e3226;
+      --bad: #e08585;
+      --bad-bg: #3a2020;
+      --warn: #dcb35a;
+      --warn-bg: #362a12;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #18120f;
+    --surface: #221a17;
+    --surface-2: #2b2119;
+    --border: #3c2f28;
+    --text: #f3ece7;
+    --text-2: #b7a99e;
+    --accent: #d1607a;
+    --accent-ink: #241014;
+    --good: #6bbf94;
+    --good-bg: #1e3226;
+    --bad: #e08585;
+    --bad-bg: #3a2020;
+    --warn: #dcb35a;
+    --warn-bg: #362a12;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 1.5rem 1.25rem 4rem;
+  }
+  h3, h4 { font-family: 'Oswald', 'IBM Plex Sans', sans-serif; font-weight: 500; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text); margin: 1.75rem 0 0.6rem; }
+  h3:first-child { margin-top: 0; }
+
+  .tabs { display: flex; gap: 4px; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border); }
+  .tab {
+    font-family: 'Oswald', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 10px 16px;
+    cursor: pointer;
+    border: none;
+    background: none;
+    font-size: 13px;
+    color: var(--text-2);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
   .panel { display: none; }
   .panel.active { display: block; }
-  textarea { width: 100%; height: 140px; font-family: monospace; font-size: 12px; }
-  .row { display: flex; align-items: center; justify-content: space-between; border: 1px solid #ddd; border-radius: 6px; padding: 10px 14px; margin-bottom: 8px; }
-  .row.ineligible { opacity: 0.55; }
-  .row.top { border-color: #4a7; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid #eee; }
-  .bye { color: #b33; }
-  .badge { font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #fee; color: #b33; }
-  button { cursor: pointer; padding: 6px 12px; }
-  input[type=number] { width: 60px; }
-  label { font-size: 13px; margin-right: 4px; }
-  .field { margin-bottom: 8px; }
+
+  textarea {
+    width: 100%; height: 140px; font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+    background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px;
+  }
+  textarea:focus, input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .row {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    margin-bottom: 8px;
+  }
+  .row.ineligible { opacity: 0.6; }
+  .row.top { border-left-color: var(--accent); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-2); font-family: 'Oswald', sans-serif; font-weight: 500; text-transform: uppercase; font-size: 11px; letter-spacing: 0.04em; }
+
+  .bye { color: var(--bad); font-size: 12px; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--bad-bg); color: var(--bad); font-weight: 500; }
+
+  button {
+    cursor: pointer; padding: 7px 14px; font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; font-weight: 500;
+    background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius);
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  #app > .panel button[id^="save-"], #generate-schedule {
+    background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
+  }
+  #app > .panel button[id^="save-"]:hover, #generate-schedule:hover { opacity: 0.9; color: var(--accent-ink); }
+
+  input[type=number], input[type=text], select {
+    font-family: 'IBM Plex Mono', monospace; font-size: 13px;
+    background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px;
+  }
+  input[type=number] { width: 64px; }
+  label { font-size: 13px; color: var(--text-2); margin-right: 8px; }
+  .field { margin-bottom: 10px; display: flex; align-items: center; gap: 4px; }
+  p[id$="-status"] { font-size: 13px; color: var(--text-2); min-height: 1.2em; }
+
+  #week-label { font-family: 'Oswald', sans-serif; font-size: 18px; letter-spacing: 0.03em; margin: 0 8px; }
+  #week-prev, #week-next { padding: 6px 10px; }
+  #window-badge:not(:empty) {
+    display: inline-block; margin-left: 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em;
+    background: var(--warn-bg); color: var(--warn); padding: 3px 9px; border-radius: 999px; font-family: 'IBM Plex Sans', sans-serif; font-weight: 500;
+  }
+  #own-score { background: var(--surface-2); border-left-color: var(--accent); margin-bottom: 1.25rem; }
 </style>
 </head>
 <body>
