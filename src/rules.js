@@ -23,8 +23,7 @@
       const metInWindow = scheduleWeeks.some((w) => (
         w.locked
         && w.opponent === team
-        && w.week >= settings.restrictedWindowStart
-        && w.week <= settings.restrictedWindowEnd
+        && isRestrictedWeek(w.week, settings)
       ));
       if (metInWindow) {
         return 'already played this team during the once-each window';
