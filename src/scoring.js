@@ -61,7 +61,8 @@
   global.playerScore = playerScore;
   global.teamWeekBreakdown = teamWeekBreakdown;
   global.teamWeekScore = teamWeekScore;
+  global.findPlayerInfo = findPlayerInfo;
   if (typeof module !== 'undefined') {
-    module.exports = { playerScore, teamWeekBreakdown, teamWeekScore };
+    module.exports = { playerScore, teamWeekBreakdown, teamWeekScore, findPlayerInfo };
   }
 })(typeof window !== 'undefined' ? window : global);

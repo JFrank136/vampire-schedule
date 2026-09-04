@@ -1,7 +1,7 @@
 // matchup-tool/tests/scoring.test.js
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { playerScore, teamWeekBreakdown, teamWeekScore } = require('../src/scoring.js');
+const { playerScore, teamWeekBreakdown, teamWeekScore, findPlayerInfo } = require('../src/scoring.js');
 
 const DRAFTSHARKS = {
   'Bijan Robinson': { bye: 5, injuryRisk: 12, threeDValue: 90, weeklyProjection: null },
@@ -49,6 +49,12 @@ test('falls back to a known nickname alias when names differ beyond punctuation/
   const score = playerScore('Cam Skattebo', draftsharks, 3);
   assert.equal(score.value, 29);
   assert.equal(score.found, true);
+});
+
+test('findPlayerInfo is exported for lookups outside of scoring (e.g. the roster browser)', () => {
+  const draftsharks = { 'Michael Pittman Jr.': { bye: 9, injuryRisk: 20, threeDValue: 19, weeklyProjection: null } };
+  assert.deepEqual(findPlayerInfo('Michael Pittman', draftsharks), draftsharks['Michael Pittman Jr.']);
+  assert.equal(findPlayerInfo('Nobody', draftsharks), undefined);
 });
 
 test('teamWeekBreakdown only includes starters', () => {

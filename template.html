@@ -77,6 +77,7 @@
     padding: 10px 16px;
     cursor: pointer;
     border: none;
+    border-radius: 0;
     background: none;
     font-size: 13px;
     color: var(--text-2);
@@ -91,7 +92,6 @@
 
   .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-  .card.top { border-color: var(--border); border-left: 3px solid var(--accent); }
   .card.ineligible { opacity: 0.6; }
   .card-top { padding: 12px 14px 8px; }
   .card-eyebrow { font-family: 'Oswald', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); margin-bottom: 2px; }
@@ -253,9 +253,12 @@
     list.innerHTML = '';
     teams.forEach((entry, index) => {
       const card = document.createElement('div');
-      card.className = 'card' + (entry.reason ? ' ineligible' : '') + (index === topEligibleIndex && !entry.reason ? ' top' : '');
+      card.className = 'card' + (entry.reason ? ' ineligible' : '');
       const byePlayers = entry.breakdown.filter((p) => p.onBye).map((p) => p.player).join(', ');
-      const injured = entry.breakdown.filter((p) => p.injuryRisk !== null && p.injuryRisk >= 40);
+      const injuryValues = entry.breakdown.filter((p) => p.injuryRisk !== null).map((p) => p.injuryRisk);
+      const avgInjuryRisk = injuryValues.length
+        ? Math.round(injuryValues.reduce((sum, v) => sum + v, 0) / injuryValues.length)
+        : null;
       const margin = (myScore - entry.score).toFixed(1);
 
       const top = document.createElement('div');
@@ -272,10 +275,10 @@
         strip.innerHTML = '<strong>Bye:</strong> ' + esc(byePlayers);
         card.appendChild(strip);
       }
-      if (injured.length && !entry.reason) {
+      if (avgInjuryRisk !== null && avgInjuryRisk >= 40 && !entry.reason) {
         const strip = document.createElement('div');
         strip.className = 'card-strip injury';
-        strip.textContent = 'Injury risk on a starter';
+        strip.textContent = 'Injury risk: ' + avgInjuryRisk + '%';
         card.appendChild(strip);
       }
       if (entry.reason) {
@@ -377,7 +380,7 @@
     const players = state.rosters[team] || [];
     const tbody = document.querySelector('#roster-table tbody');
     tbody.innerHTML = players.map((p) => {
-      const info = state.draftsharks[p.player];
+      const info = findPlayerInfo(p.player, state.draftsharks);
       const onBye = info && info.bye === state.currentWeek;
       const threeD = info && info.threeDValue !== null && info.threeDValue !== undefined ? info.threeDValue.toFixed(1) : '';
       const weekly = info && info.weeklyProjection !== null && info.weeklyProjection !== undefined ? info.weeklyProjection.toFixed(1) : '';
