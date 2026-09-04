@@ -140,7 +140,6 @@
   }
   #own-score { background: var(--surface-2); border-left-color: var(--accent); margin-bottom: 1.25rem; }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 </head>
 <body>
 <div id="app">
@@ -408,16 +407,12 @@
     else state.scheduleWeeks.push(updated);
     renderPicker();
     if (state.db) {
-      state.db.from('vampire_schedule').upsert({
-        week, opponent, locked: true, result: null, note: '',
-      }).then(({ error }) => {
-        if (error) {
+      state.db.collection('schedule').doc('week-' + week).set(updated)
+        .then(() => { $('sync-status').textContent = ''; })
+        .catch((error) => {
           console.error('Failed to lock week ' + week, error);
           $('sync-status').textContent = 'Failed to save — check your connection and try again.';
-        } else {
-          $('sync-status').textContent = '';
-        }
-      });
+        });
     }
   }
 
@@ -427,16 +422,12 @@
     const updated = { ...state.scheduleWeeks[index], result, note };
     state.scheduleWeeks[index] = updated;
     if (state.db) {
-      state.db.from('vampire_schedule').upsert({
-        week, opponent: updated.opponent, locked: updated.locked, result, note,
-      }).then(({ error }) => {
-        if (error) {
+      state.db.collection('schedule').doc('week-' + week).set(updated)
+        .then(() => { $('sync-status').textContent = ''; })
+        .catch((error) => {
           console.error('Failed to update week ' + week, error);
           $('sync-status').textContent = 'Failed to save — check your connection and try again.';
-        } else {
-          $('sync-status').textContent = '';
-        }
-      });
+        });
     }
     renderOverview();
   }
@@ -450,109 +441,58 @@
     renderPicker();
   });
 
-  $('generate-schedule').addEventListener('click', async () => {
+  $('generate-schedule').addEventListener('click', () => {
     const teams = nonVampireTeams();
     const generated = generateSeasonSchedule(teams, state.settings, state.scheduleWeeks);
     state.scheduleWeeks = generated;
     if (state.db) {
-      const { error } = await state.db.from('vampire_schedule').upsert(generated.map((entry) => ({
-        week: entry.week, opponent: entry.opponent, locked: entry.locked, result: entry.result, note: entry.note || '',
-      })));
-      if (error) {
-        console.error('Failed to save generated schedule', error);
-        $('sync-status').textContent = 'Failed to save — check your connection and try again.';
-      } else {
-        $('sync-status').textContent = '';
-      }
+      Promise.all(generated.map((entry) => (
+        state.db.collection('schedule').doc('week-' + entry.week).set(entry)
+      )))
+        .then(() => { $('sync-status').textContent = ''; })
+        .catch((error) => {
+          console.error('Failed to save generated schedule', error);
+          $('sync-status').textContent = 'Failed to save — check your connection and try again.';
+        });
     }
     renderOverview();
   });
 
-  const SUPABASE_URL = 'https://tdtchffawcmkvgrccjza.supabase.co';
-  const SUPABASE_ANON_KEY = 'sb_publishable_7T_APoP6DNIpgI5QOsaY0g_qs_uhsRs';
-
-  function rowsToRosters(rows) {
-    const rosters = {};
-    for (const row of rows) {
-      if (!rosters[row.team]) rosters[row.team] = [];
-      rosters[row.team].push({
-        player: row.player, position: row.position, lineupSlot: row.lineup_slot, starter: row.starter,
-      });
-    }
-    return rosters;
-  }
-
-  function rowsToPlayerValues(rows) {
-    const players = {};
-    for (const row of rows) {
-      players[row.player] = {
-        team: row.team, position: row.position, bye: row.bye,
-        injuryRisk: row.injury_risk, threeDValue: row.three_d_value, weeklyProjection: row.weekly_projection,
-      };
-    }
-    return players;
-  }
-
-  function rowToScheduleWeek(row) {
-    return { week: row.week, opponent: row.opponent, locked: row.locked, result: row.result, note: row.note || '' };
-  }
-
-  async function loadRosters(supabase) {
-    const { data, error } = await supabase.from('vampire_rosters').select('*');
-    state.rosters = rowsToRosters(data || []);
-    return error;
-  }
-  async function loadPlayerValues(supabase) {
-    const { data, error } = await supabase.from('vampire_player_values').select('*');
-    state.draftsharks = rowsToPlayerValues(data || []);
-    return error;
-  }
-  async function loadSettings(supabase) {
-    const { data, error } = await supabase.from('vampire_settings').select('*').single();
-    if (data) {
-      state.settings = {
-        lastRegularSeasonWeek: data.last_regular_season_week,
-        restrictedWindowStart: data.restricted_window_start,
-        restrictedWindowEnd: data.restricted_window_end,
-        maxMeetingsPerOpponent: data.max_meetings_per_opponent,
-      };
-    }
-    return error;
-  }
-  async function loadSchedule(supabase) {
-    const { data, error } = await supabase.from('vampire_schedule').select('*').order('week');
-    state.scheduleWeeks = (data || []).map(rowToScheduleWeek);
-    return error;
-  }
-
   async function init() {
-    if (typeof window.supabase === 'undefined') {
+    if (typeof claude === 'undefined' || !claude.use) {
       renderPicker();
       renderOverview();
       return;
     }
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    state.db = supabase;
+    const db = await claude.use('db');
+    state.db = db;
+    if (!db) {
+      $('sync-status').textContent = 'Could not connect to shared storage — check your connection and reload.';
+      renderPicker();
+      renderOverview();
+      return;
+    }
 
-    const errors = await Promise.all([
-      loadRosters(supabase),
-      loadPlayerValues(supabase),
-      loadSettings(supabase),
-      loadSchedule(supabase),
-    ]);
-    $('sync-status').textContent = errors.some(Boolean)
-      ? 'Could not load the latest data — check your connection and reload.'
-      : '';
-    renderPicker();
-    renderOverview();
-
-    supabase.channel('vampire_schedule_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'vampire_schedule' }, async () => {
-        await loadSchedule(supabase);
-        renderPicker();
-        renderOverview();
-      })
-      .subscribe();
+    db.doc('data/rosters').onSnapshot((snap) => {
+      state.rosters = snap.exists ? snap.data() : {};
+      renderPicker();
+      renderRosters();
+    });
+    db.doc('data/draftsharks').onSnapshot((snap) => {
+      state.draftsharks = snap.exists ? snap.data() : {};
+      renderPicker();
+      renderRosters();
+    });
+    db.doc('data/settings').onSnapshot((snap) => {
+      if (snap.exists) state.settings = snap.data();
+      renderPicker();
+      renderOverview();
+    });
+    db.collection('schedule').onSnapshot((querySnap) => {
+      state.scheduleWeeks = querySnap.docs.map((d) => d.data());
+      renderPicker();
+      renderOverview();
+    });
   }
 
   init();
