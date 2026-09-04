@@ -39,7 +39,7 @@
   function findScheduleViolations(scheduleWeeks, settings) {
     const weeksByTeam = {};
     for (const w of scheduleWeeks) {
-      if (!w.locked || !w.opponent) continue;
+      if (!w.opponent) continue;
       if (!weeksByTeam[w.opponent]) weeksByTeam[w.opponent] = [];
       weeksByTeam[w.opponent].push(w.week);
     }

@@ -94,12 +94,24 @@ test('findScheduleViolations does not flag a repeat where one meeting is outside
   assert.deepEqual(findScheduleViolations(schedule, SETTINGS), []);
 });
 
-test('findScheduleViolations ignores unlocked (tentative) weeks', () => {
+test('findScheduleViolations flags a repeat even when one meeting is still tentative (unlocked)', () => {
   const schedule = [
     { week: 6, opponent: 'Ray', locked: true },
     { week: 9, opponent: 'Ray', locked: false },
   ];
-  assert.deepEqual(findScheduleViolations(schedule, SETTINGS), []);
+  assert.deepEqual(findScheduleViolations(schedule, SETTINGS), [
+    { type: 'repeated-in-window', team: 'Ray', weeks: [6, 9] },
+  ]);
+});
+
+test('findScheduleViolations flags two entirely tentative meetings in the window', () => {
+  const schedule = [
+    { week: 7, opponent: 'Bryant', locked: false },
+    { week: 8, opponent: 'Bryant', locked: true },
+  ];
+  assert.deepEqual(findScheduleViolations(schedule, SETTINGS), [
+    { type: 'repeated-in-window', team: 'Bryant', weeks: [7, 8] },
+  ]);
 });
 
 test('findScheduleViolations also flags a team played more than the season max', () => {

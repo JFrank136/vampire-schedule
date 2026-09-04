@@ -2,6 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Vampire Matchup Picker</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
@@ -93,6 +94,7 @@
   .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
   .card.ineligible { opacity: 0.6; }
+  .card.locked-in { border-color: var(--good); }
   .card-top { padding: 12px 14px 8px; }
   .card-eyebrow { font-family: 'Oswald', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); margin-bottom: 2px; }
   .card-name { font-family: 'Oswald', sans-serif; font-size: 17px; font-weight: 600; }
@@ -105,6 +107,7 @@
   .card-strip.bye { background: var(--warn-bg); color: var(--warn); }
   .card-strip.injury { background: var(--bad-bg); color: var(--bad); }
   .card-strip.ineligible { background: var(--surface-2); color: var(--text-2); font-style: italic; }
+  .card-strip.locked-in { background: var(--good-bg); color: var(--good); font-weight: 500; }
   .card-footer { padding: 10px 14px 12px; }
   .card-footer button { width: 100%; }
   .card-lineup { margin: 0 14px 10px; width: calc(100% - 28px); }
@@ -144,6 +147,18 @@
     background: var(--warn-bg); color: var(--warn); padding: 3px 9px; border-radius: 999px; font-family: 'IBM Plex Sans', sans-serif; font-weight: 500;
   }
   #own-score { background: var(--surface-2); border-left-color: var(--accent); margin-bottom: 1.25rem; }
+
+  @media (max-width: 600px) {
+    #roster-table thead { display: none; }
+    #roster-table, #roster-table tbody, #roster-table tr, #roster-table td { display: block; width: 100%; }
+    #roster-table tr { border-bottom: 1px solid var(--border); padding: 8px 0; }
+    #roster-table td { border-bottom: none; padding: 2px 0; }
+    #roster-table td::before {
+      content: attr(data-label); display: inline-block; min-width: 100px;
+      font-family: 'Oswald', sans-serif; font-size: 11px; font-weight: 500;
+      text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-2);
+    }
+  }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 </head>
@@ -253,12 +268,14 @@
     }).sort((a, b) => a.score - b.score);
 
     const topEligibleIndex = teams.findIndex((t) => !t.reason);
+    const currentEntry = state.scheduleWeeks.find((w) => w.week === state.currentWeek);
 
     const list = $('opponent-list');
     list.innerHTML = '';
     teams.forEach((entry, index) => {
+      const isLockedPick = !!(currentEntry && currentEntry.locked && currentEntry.opponent === entry.team);
       const card = document.createElement('div');
-      card.className = 'card' + (entry.reason ? ' ineligible' : '');
+      card.className = 'card' + (entry.reason && !isLockedPick ? ' ineligible' : '') + (isLockedPick ? ' locked-in' : '');
       const byePlayers = entry.breakdown.filter((p) => p.onBye).map((p) => p.player).join(', ');
       const injuryValues = entry.breakdown.filter((p) => p.injuryRisk !== null).map((p) => p.injuryRisk);
       const avgInjuryRisk = injuryValues.length
@@ -286,7 +303,12 @@
         strip.textContent = 'Injury risk: ' + avgInjuryRisk + '%';
         card.appendChild(strip);
       }
-      if (entry.reason) {
+      if (isLockedPick) {
+        const strip = document.createElement('div');
+        strip.className = 'card-strip locked-in';
+        strip.textContent = 'Locked in for week ' + state.currentWeek;
+        card.appendChild(strip);
+      } else if (entry.reason) {
         const strip = document.createElement('div');
         strip.className = 'card-strip ineligible';
         strip.textContent = entry.reason;
@@ -301,7 +323,18 @@
       )).join('') + '</tbody>';
       card.appendChild(details);
 
-      if (!entry.reason) {
+      if (isLockedPick) {
+        const footer = document.createElement('div');
+        footer.className = 'card-footer';
+        const unlockButton = document.createElement('button');
+        unlockButton.textContent = 'Unlock';
+        unlockButton.addEventListener('click', (event) => {
+          event.stopPropagation();
+          unlockWeek(state.currentWeek);
+        });
+        footer.appendChild(unlockButton);
+        card.appendChild(footer);
+      } else if (!entry.reason) {
         const footer = document.createElement('div');
         footer.className = 'card-footer';
         const lockButton = document.createElement('button');
@@ -355,7 +388,15 @@
       const opponentCell = document.createElement('td');
       opponentCell.textContent = entry.opponent || '—';
       const statusCell = document.createElement('td');
-      statusCell.textContent = entry.locked ? 'locked' : (entry.opponent ? 'tentative' : '');
+      if (entry.locked) {
+        statusCell.appendChild(document.createTextNode('locked '));
+        const unlockButton = document.createElement('button');
+        unlockButton.textContent = 'Unlock';
+        unlockButton.addEventListener('click', () => unlockWeek(week));
+        statusCell.appendChild(unlockButton);
+      } else {
+        statusCell.textContent = entry.opponent ? 'tentative' : '';
+      }
       tr.appendChild(weekCell);
       tr.appendChild(opponentCell);
       tr.appendChild(statusCell);
@@ -380,11 +421,18 @@
     const tbody = document.querySelector('#roster-table tbody');
     tbody.innerHTML = players.map((p) => {
       const info = findPlayerInfo(p.player, state.draftsharks);
-      const onBye = info && info.bye === state.currentWeek;
+      const byeWeek = info && info.bye !== null && info.bye !== undefined ? info.bye : null;
+      const onBye = byeWeek !== null && byeWeek === state.currentWeek;
       const threeD = info && info.threeDValue !== null && info.threeDValue !== undefined ? info.threeDValue.toFixed(1) : '';
       const weekly = info && info.weeklyProjection !== null && info.weeklyProjection !== undefined ? info.weeklyProjection.toFixed(1) : '';
-      return '<tr><td>' + esc(p.lineupSlot) + '</td><td>' + esc(p.player) + '</td><td>' + esc(p.position) + '</td>'
-        + '<td>' + threeD + '</td><td>' + weekly + '</td><td>' + (onBye ? 'bye' : '') + '</td></tr>';
+      return '<tr>'
+        + '<td data-label="Slot">' + esc(p.lineupSlot) + '</td>'
+        + '<td data-label="Player">' + esc(p.player) + '</td>'
+        + '<td data-label="Position">' + esc(p.position) + '</td>'
+        + '<td data-label="3D Value">' + threeD + '</td>'
+        + '<td data-label="Weekly Proj.">' + weekly + '</td>'
+        + '<td data-label="Bye"' + (onBye ? ' class="bye"' : '') + '>' + (byeWeek !== null ? byeWeek : '') + (onBye ? ' (this week)' : '') + '</td>'
+        + '</tr>';
     }).join('');
   }
 
@@ -409,6 +457,24 @@
       state.db.from('vampire_schedule').upsert({ week, opponent, locked: true }).then(({ error }) => {
         if (error) {
           console.error('Failed to lock week ' + week, error);
+          $('sync-status').textContent = 'Failed to save — check your connection and try again.';
+        } else {
+          $('sync-status').textContent = '';
+        }
+      });
+    }
+  }
+
+  function unlockWeek(week) {
+    const index = state.scheduleWeeks.findIndex((w) => w.week === week);
+    if (index < 0) return;
+    state.scheduleWeeks[index] = { ...state.scheduleWeeks[index], locked: false };
+    renderPicker();
+    renderOverview();
+    if (state.db) {
+      state.db.from('vampire_schedule').upsert({ week, locked: false }).then(({ error }) => {
+        if (error) {
+          console.error('Failed to unlock week ' + week, error);
           $('sync-status').textContent = 'Failed to save — check your connection and try again.';
         } else {
           $('sync-status').textContent = '';
