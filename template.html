@@ -117,6 +117,9 @@
   .bye { color: var(--bad); font-size: 12px; }
   .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--bad-bg); color: var(--bad); font-weight: 500; }
 
+  .rule-alert { background: var(--bad-bg); color: var(--bad); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 12px; font-size: 13px; }
+  .rule-alert ul { margin: 4px 0 0; padding-left: 18px; }
+
   button {
     cursor: pointer; padding: 7px 14px; font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; font-weight: 500;
     background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius);
@@ -177,6 +180,7 @@
 
   <div class="panel" id="panel-overview">
     <button id="generate-schedule">Generate / refresh season schedule</button>
+    <div id="schedule-violations"></div>
     <table id="overview-table">
       <thead><tr><th>Week</th><th>Opponent</th><th>Status</th><th>Result</th><th>Note</th></tr></thead>
       <tbody></tbody>
@@ -313,7 +317,32 @@
     });
   }
 
+  function violationMessage(violation) {
+    if (violation.type === 'repeated-in-window') {
+      return esc(violation.team) + ' is scheduled ' + violation.weeks.length
+        + ' times during weeks ' + state.settings.restrictedWindowStart + '–'
+        + state.settings.restrictedWindowEnd + ' (weeks ' + violation.weeks.join(', ') + ') — must play each team exactly once in that window.';
+    }
+    return esc(violation.team) + ' is scheduled ' + violation.weeks.length
+      + ' times this season (weeks ' + violation.weeks.join(', ') + '), over the max of '
+      + state.settings.maxMeetingsPerOpponent + '.';
+  }
+
+  function renderScheduleViolations() {
+    const container = $('schedule-violations');
+    const violations = findScheduleViolations(state.scheduleWeeks, state.settings);
+    if (violations.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+    container.innerHTML = '<div class="rule-alert"><strong>Schedule rule violation'
+      + (violations.length > 1 ? 's' : '') + ':</strong><ul>'
+      + violations.map((v) => '<li>' + violationMessage(v) + '</li>').join('')
+      + '</ul></div>';
+  }
+
   function renderOverview() {
+    renderScheduleViolations();
     const tbody = document.querySelector('#overview-table tbody');
     tbody.innerHTML = '';
     for (let week = 1; week <= state.settings.lastRegularSeasonWeek; week += 1) {

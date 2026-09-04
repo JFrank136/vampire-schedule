@@ -6,6 +6,7 @@ const {
   isRestrictedWeek,
   ineligibilityReason,
   isEligible,
+  findScheduleViolations,
 } = require('../src/rules.js');
 
 const SETTINGS = {
@@ -65,4 +66,49 @@ test('a team played once outside the window can still be played once inside it',
 test('an unlocked (tentative) meeting does not count toward eligibility', () => {
   const schedule = [{ week: 6, opponent: 'Ray', locked: false }];
   assert.equal(isEligible('Ray', 9, schedule, SETTINGS), true);
+});
+
+test('findScheduleViolations returns nothing for a schedule with no repeats', () => {
+  const schedule = [
+    { week: 6, opponent: 'Ray', locked: true },
+    { week: 7, opponent: 'Janek', locked: true },
+  ];
+  assert.deepEqual(findScheduleViolations(schedule, SETTINGS), []);
+});
+
+test('findScheduleViolations flags a team played twice inside the restricted window', () => {
+  const schedule = [
+    { week: 6, opponent: 'Ray', locked: true },
+    { week: 9, opponent: 'Ray', locked: true },
+  ];
+  assert.deepEqual(findScheduleViolations(schedule, SETTINGS), [
+    { type: 'repeated-in-window', team: 'Ray', weeks: [6, 9] },
+  ]);
+});
+
+test('findScheduleViolations does not flag a repeat where one meeting is outside the window', () => {
+  const schedule = [
+    { week: 2, opponent: 'Ray', locked: true },
+    { week: 9, opponent: 'Ray', locked: true },
+  ];
+  assert.deepEqual(findScheduleViolations(schedule, SETTINGS), []);
+});
+
+test('findScheduleViolations ignores unlocked (tentative) weeks', () => {
+  const schedule = [
+    { week: 6, opponent: 'Ray', locked: true },
+    { week: 9, opponent: 'Ray', locked: false },
+  ];
+  assert.deepEqual(findScheduleViolations(schedule, SETTINGS), []);
+});
+
+test('findScheduleViolations also flags a team played more than the season max', () => {
+  const schedule = [
+    { week: 1, opponent: 'Ray', locked: true },
+    { week: 2, opponent: 'Ray', locked: true },
+    { week: 3, opponent: 'Ray', locked: true },
+  ];
+  assert.deepEqual(findScheduleViolations(schedule, SETTINGS), [
+    { type: 'max-meetings-exceeded', team: 'Ray', weeks: [1, 2, 3] },
+  ]);
 });

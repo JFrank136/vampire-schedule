@@ -36,11 +36,37 @@
     return ineligibilityReason(team, week, scheduleWeeks, settings) === null;
   }
 
+  function findScheduleViolations(scheduleWeeks, settings) {
+    const weeksByTeam = {};
+    for (const w of scheduleWeeks) {
+      if (!w.locked || !w.opponent) continue;
+      if (!weeksByTeam[w.opponent]) weeksByTeam[w.opponent] = [];
+      weeksByTeam[w.opponent].push(w.week);
+    }
+
+    const violations = [];
+    for (const team of Object.keys(weeksByTeam)) {
+      const weeks = weeksByTeam[team].slice().sort((a, b) => a - b);
+      if (weeks.length > settings.maxMeetingsPerOpponent) {
+        violations.push({ type: 'max-meetings-exceeded', team, weeks });
+        continue;
+      }
+      const weeksInWindow = weeks.filter((week) => isRestrictedWeek(week, settings));
+      if (weeksInWindow.length > 1) {
+        violations.push({ type: 'repeated-in-window', team, weeks: weeksInWindow });
+      }
+    }
+    return violations;
+  }
+
   global.meetingCounts = meetingCounts;
   global.isRestrictedWeek = isRestrictedWeek;
   global.ineligibilityReason = ineligibilityReason;
   global.isEligible = isEligible;
+  global.findScheduleViolations = findScheduleViolations;
   if (typeof module !== 'undefined') {
-    module.exports = { meetingCounts, isRestrictedWeek, ineligibilityReason, isEligible };
+    module.exports = {
+      meetingCounts, isRestrictedWeek, ineligibilityReason, isEligible, findScheduleViolations,
+    };
   }
 })(typeof window !== 'undefined' ? window : global);
