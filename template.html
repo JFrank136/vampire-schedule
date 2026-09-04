@@ -182,7 +182,7 @@
     <button id="generate-schedule">Generate / refresh season schedule</button>
     <div id="schedule-violations"></div>
     <table id="overview-table">
-      <thead><tr><th>Week</th><th>Opponent</th><th>Status</th><th>Result</th><th>Note</th></tr></thead>
+      <thead><tr><th>Week</th><th>Opponent</th><th>Status</th></tr></thead>
       <tbody></tbody>
     </table>
     <h4>Meetings so far</h4>
@@ -359,37 +359,6 @@
       tr.appendChild(opponentCell);
       tr.appendChild(statusCell);
 
-      const resultCell = document.createElement('td');
-      if (entry.locked) {
-        const select = document.createElement('select');
-        ['', 'W', 'L'].forEach((value) => {
-          const option = document.createElement('option');
-          option.value = value;
-          option.textContent = value || '—';
-          if ((entry.result || '') === value) option.selected = true;
-          select.appendChild(option);
-        });
-        select.addEventListener('change', () => {
-          updateWeekResult(week, select.value || null, entry.note || '');
-        });
-        resultCell.appendChild(select);
-      }
-      tr.appendChild(resultCell);
-
-      const noteCell = document.createElement('td');
-      if (entry.locked) {
-        const noteInput = document.createElement('input');
-        noteInput.type = 'text';
-        noteInput.style.width = '180px';
-        noteInput.placeholder = 'e.g. stole M. Evans for J. Reed';
-        noteInput.value = entry.note || '';
-        noteInput.addEventListener('change', () => {
-          updateWeekResult(week, entry.result || null, noteInput.value);
-        });
-        noteCell.appendChild(noteInput);
-      }
-      tr.appendChild(noteCell);
-
       tbody.appendChild(tr);
     }
 
@@ -443,22 +412,6 @@
           $('sync-status').textContent = 'Failed to save — check your connection and try again.';
         });
     }
-  }
-
-  function updateWeekResult(week, result, note) {
-    const index = state.scheduleWeeks.findIndex((w) => w.week === week);
-    if (index < 0) return;
-    const updated = { ...state.scheduleWeeks[index], result, note };
-    state.scheduleWeeks[index] = updated;
-    if (state.db) {
-      state.db.collection('schedule').doc('week-' + week).set(updated)
-        .then(() => { $('sync-status').textContent = ''; })
-        .catch((error) => {
-          console.error('Failed to update week ' + week, error);
-          $('sync-status').textContent = 'Failed to save — check your connection and try again.';
-        });
-    }
-    renderOverview();
   }
 
   $('week-prev').addEventListener('click', () => {
