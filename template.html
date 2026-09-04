@@ -154,14 +154,29 @@
 
   @media (max-width: 600px) {
     #roster-table thead { display: none; }
-    #roster-table, #roster-table tbody, #roster-table tr, #roster-table td { display: block; width: 100%; }
-    #roster-table tr { border-bottom: 1px solid var(--border); padding: 8px 0; }
-    #roster-table td { border-bottom: none; padding: 2px 0; }
-    #roster-table td::before {
-      content: attr(data-label); display: inline-block; min-width: 100px;
-      font-family: 'Oswald', sans-serif; font-size: 11px; font-weight: 500;
-      text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-2);
+    #roster-table, #roster-table tbody { display: block; width: 100%; }
+    #roster-table tr {
+      display: grid;
+      grid-template-columns: 36px 1fr auto;
+      grid-template-areas: "slot player bye" ". meta value";
+      column-gap: 8px; row-gap: 2px;
+      padding: 8px 0; border-bottom: 1px solid var(--border);
     }
+    #roster-table td { display: block; padding: 0; border: none; font-size: 13px; }
+    #roster-table td[data-label="Slot"] {
+      grid-area: slot; font-family: 'Oswald', sans-serif; font-size: 11px;
+      font-weight: 600; color: var(--text-2); align-self: center;
+    }
+    #roster-table td[data-label="Player"] { grid-area: player; font-weight: 600; }
+    #roster-table td[data-label="Position"] { grid-area: meta; font-size: 12px; color: var(--text-2); }
+    #roster-table td[data-label="3D Value"] {
+      grid-area: value; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-2);
+      text-align: right; justify-self: end;
+    }
+    /* Hidden on mobile to keep each player to 2 compact lines — 3D Value already
+       serves as the effective score until DraftSharks publishes weekly numbers. */
+    #roster-table td[data-label="Weekly Proj."] { display: none; }
+    #roster-table td[data-label="Bye"] { grid-area: bye; font-size: 12px; color: var(--text-2); align-self: start; }
   }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
