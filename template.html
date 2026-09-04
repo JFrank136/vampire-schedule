@@ -120,6 +120,10 @@
   .bye { color: var(--bad); font-size: 12px; }
   .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--bad-bg); color: var(--bad); font-weight: 500; }
 
+  .status-badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 500; margin-right: 6px; }
+  .status-badge.locked { background: var(--good-bg); color: var(--good); }
+  .status-badge.tentative { background: var(--warn-bg); color: var(--warn); }
+
   .rule-alert { background: var(--bad-bg); color: var(--bad); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 12px; font-size: 13px; }
   .rule-alert ul { margin: 4px 0 0; padding-left: 18px; }
 
@@ -389,13 +393,19 @@
       opponentCell.textContent = entry.opponent || '—';
       const statusCell = document.createElement('td');
       if (entry.locked) {
-        statusCell.appendChild(document.createTextNode('locked '));
+        const statusBadge = document.createElement('span');
+        statusBadge.className = 'status-badge locked';
+        statusBadge.textContent = 'locked';
+        statusCell.appendChild(statusBadge);
         const unlockButton = document.createElement('button');
         unlockButton.textContent = 'Unlock';
         unlockButton.addEventListener('click', () => unlockWeek(week));
         statusCell.appendChild(unlockButton);
-      } else {
-        statusCell.textContent = entry.opponent ? 'tentative' : '';
+      } else if (entry.opponent) {
+        const statusBadge = document.createElement('span');
+        statusBadge.className = 'status-badge tentative';
+        statusBadge.textContent = 'tentative';
+        statusCell.appendChild(statusBadge);
       }
       tr.appendChild(weekCell);
       tr.appendChild(opponentCell);
