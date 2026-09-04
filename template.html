@@ -93,7 +93,7 @@
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
   .card.top { border-color: var(--border); border-left: 3px solid var(--accent); }
   .card.ineligible { opacity: 0.6; }
-  .card-top { padding: 12px 14px 8px; cursor: pointer; }
+  .card-top { padding: 12px 14px 8px; }
   .card-eyebrow { font-family: 'Oswald', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); margin-bottom: 2px; }
   .card-name { font-family: 'Oswald', sans-serif; font-size: 17px; font-weight: 600; }
   .card-stats { display: flex; align-items: baseline; justify-content: space-between; margin-top: 6px; }
@@ -107,6 +107,8 @@
   .card-strip.ineligible { background: var(--surface-2); color: var(--text-2); font-style: italic; }
   .card-footer { padding: 10px 14px 12px; }
   .card-footer button { width: 100%; }
+  .card-lineup { margin: 0 14px 10px; width: calc(100% - 28px); }
+  .card-lineup td { font-size: 12px; padding: 5px 6px; }
 
   table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
   th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
@@ -284,17 +286,12 @@
       }
 
       const details = document.createElement('table');
-      details.style.display = 'none';
-      details.style.margin = '0 14px 10px';
-      details.style.width = 'calc(100% - 28px)';
+      details.className = 'card-lineup';
       details.innerHTML = '<tbody>' + entry.breakdown.map((p) => (
         '<tr><td>' + esc(p.slot) + '</td><td>' + esc(p.player) + '</td><td>' + p.value.toFixed(1) + '</td>'
         + '<td>' + (p.onBye ? 'bye' : '') + '</td></tr>'
       )).join('') + '</tbody>';
       card.appendChild(details);
-      top.addEventListener('click', () => {
-        details.style.display = details.style.display === 'none' ? 'table' : 'none';
-      });
 
       if (!entry.reason) {
         const footer = document.createElement('div');

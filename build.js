@@ -6,6 +6,7 @@ const SRC_ORDER = [
   'csv-parser.js',
   'rosters-parser.js',
   'draftsharks-parser.js',
+  'name-matching.js',
   'scoring.js',
   'rules.js',
   'schedule-generator.js',

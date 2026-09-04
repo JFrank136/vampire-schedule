@@ -37,6 +37,20 @@ test('scores an unknown player as 0 and flags not found', () => {
   assert.equal(score.found, false);
 });
 
+test('falls back to a normalized-name match when the exact name differs', () => {
+  const draftsharks = { 'Michael Pittman Jr.': { bye: 9, injuryRisk: 20, threeDValue: 19, weeklyProjection: null } };
+  const score = playerScore('Michael Pittman', draftsharks, 3);
+  assert.equal(score.value, 19);
+  assert.equal(score.found, true);
+});
+
+test('falls back to a known nickname alias when names differ beyond punctuation/suffix', () => {
+  const draftsharks = { 'Cameron Skattebo': { bye: 8, injuryRisk: 72, threeDValue: 29, weeklyProjection: null } };
+  const score = playerScore('Cam Skattebo', draftsharks, 3);
+  assert.equal(score.value, 29);
+  assert.equal(score.found, true);
+});
+
 test('teamWeekBreakdown only includes starters', () => {
   const breakdown = teamWeekBreakdown(TEAM, DRAFTSHARKS, 3);
   assert.equal(breakdown.length, 2);

@@ -1,7 +1,34 @@
 // matchup-tool/src/scoring.js
 (function (global) {
+  const normalizeName = typeof module !== 'undefined'
+    ? require('./name-matching.js').normalizeName
+    : global.normalizeName;
+
+  const normalizedIndexCache = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+
+  function buildNormalizedIndex(draftSharksData) {
+    const index = {};
+    for (const name of Object.keys(draftSharksData)) {
+      index[normalizeName(name)] = name;
+    }
+    return index;
+  }
+
+  function findPlayerInfo(playerName, draftSharksData) {
+    const exact = draftSharksData[playerName];
+    if (exact) return exact;
+
+    let index = normalizedIndexCache && normalizedIndexCache.get(draftSharksData);
+    if (!index) {
+      index = buildNormalizedIndex(draftSharksData);
+      if (normalizedIndexCache) normalizedIndexCache.set(draftSharksData, index);
+    }
+    const matchedName = index[normalizeName(playerName)];
+    return matchedName ? draftSharksData[matchedName] : undefined;
+  }
+
   function playerScore(playerName, draftSharksData, week) {
-    const info = draftSharksData[playerName];
+    const info = findPlayerInfo(playerName, draftSharksData);
     if (!info) return { value: 0, onBye: false, injuryRisk: null, found: false };
     const onBye = info.bye === week;
     const base = info.weeklyProjection !== null && info.weeklyProjection !== undefined
