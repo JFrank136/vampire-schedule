@@ -45,6 +45,26 @@ column gets renamed on either side.
   0.5 PPR — use the half-ppr file, not full-PPR). Columns actually used:
   `Player`, `Team`, `Fantasy Position`, `Bye`, `InjuryRisk`, `3D Value`.
   Parsed by `src/draftsharks-parser.js`.
+- `../../in-season/data/processed/rankings_long.csv` — the in-season weekly
+  pipeline's output (see that project's README/docs/DATA.md). Used only by
+  `scripts/refresh-weekly-projection.js` (below) to populate
+  `weekly_projection` once the season starts; the draft-time refresh above is
+  unrelated to it.
+
+## Weekly projection refresh (`scripts/refresh-weekly-projection.js`)
+
+`node scripts/refresh-weekly-projection.js ../../in-season/data/processed/rankings_long.csv <week> [scoring]`
+(`scoring` defaults to `half-ppr`, matching this league). Unlike
+`refresh-data.js`, this **never wipes** `vampire_player_values` — it's a
+targeted `UPDATE ... SET weekly_projection` per matched player, using Draft
+Sharks' `weekly3dPts` ("3D Proj") for that week/scoring, matched onto
+`vampire_player_values.player` via the same `normalizeName` alias-matching
+`src/scoring.js` already uses (not a separate/forked matcher). The CSV is
+append-only across re-pulls of a not-yet-played week, so this script always
+takes the row with the latest `pulled_at` per player. Refuses to run (exits 1,
+updates nothing) if the match rate comes in under 50% — a low rate almost
+always means a name-matching or CSV-shape problem, not that many players are
+genuinely unranked, and partial/wrong data here is worse than none.
 
 ## The player-name gotcha
 

@@ -111,7 +111,9 @@
   .card-footer { padding: 10px 14px 12px; }
   .card-footer button { width: 100%; }
   .card-lineup { margin: 0 14px 10px; width: calc(100% - 28px); }
-  .card-lineup td { font-size: 12px; padding: 5px 6px; }
+  .card-lineup th, .card-lineup td { font-size: 12px; padding: 5px 6px; }
+  .card-lineup th { font-size: 10px; }
+  .card-lineup-bench td { color: var(--text-2); font-style: italic; border-top: 1px solid var(--border); }
 
   table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
   th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
@@ -265,8 +267,9 @@
       const players = state.rosters[team] || [];
       const score = teamWeekScore(players, state.draftsharks, state.currentWeek);
       const breakdown = teamWeekBreakdown(players, state.draftsharks, state.currentWeek);
+      const benchTop = teamBenchTopPlayer(players, state.draftsharks, state.currentWeek);
       const reason = ineligibilityReason(team, state.currentWeek, state.scheduleWeeks, state.settings);
-      return { team, score, breakdown, reason };
+      return { team, score, breakdown, benchTop, reason };
     }).sort((a, b) => a.score - b.score);
 
     const topEligibleIndex = teams.findIndex((t) => !t.reason);
@@ -319,10 +322,29 @@
 
       const details = document.createElement('table');
       details.className = 'card-lineup';
-      details.innerHTML = '<tbody>' + entry.breakdown.map((p) => (
-        '<tr><td>' + esc(p.slot) + '</td><td>' + esc(p.player) + '</td><td>' + p.value.toFixed(1) + '</td>'
-        + '<td>' + (p.onBye ? 'bye' : '') + '</td></tr>'
-      )).join('') + '</tbody>';
+      details.innerHTML = '<thead><tr><th>Slot</th><th>Player</th><th>Weekly Proj.</th><th>3D Value</th><th>Status</th></tr></thead>'
+        + '<tbody>' + entry.breakdown.map((p) => {
+          const weeklyText = p.weeklyProjection !== null ? p.weeklyProjection.toFixed(1) : '—';
+          // 3D Value is a season-long draft-day number -- once a player is
+          // flagged out for the week, it's not relevant to this decision and
+          // showing it next to "out" reads as if that's what they'd score.
+          const threeDText = !p.isOut && p.threeDValue !== null ? p.threeDValue.toFixed(1) : '—';
+          let statusText = '';
+          if (p.onBye) statusText = 'bye';
+          else if (p.isOut) statusText = 'out';
+          if (p.isOut && p.replacement) {
+            statusText += ' → ' + esc(p.replacement.player);
+          }
+          const statusClass = p.onBye || p.isOut ? ' class="bye"' : '';
+          return '<tr><td>' + esc(p.slot) + '</td><td>' + esc(p.player) + '</td><td>' + weeklyText + '</td>'
+            + '<td>' + threeDText + '</td><td' + statusClass + '>' + statusText + '</td></tr>';
+        }).join('')
+        + (entry.benchTop
+          ? '<tr class="card-lineup-bench"><td>BENCH</td><td>' + esc(entry.benchTop.player) + '</td>'
+            + '<td>' + (entry.benchTop.weeklyProjection !== null ? entry.benchTop.weeklyProjection.toFixed(1) : '—') + '</td>'
+            + '<td>' + (entry.benchTop.threeDValue !== null ? entry.benchTop.threeDValue.toFixed(1) : '—') + '</td><td>top bench</td></tr>'
+          : '')
+        + '</tbody>';
       card.appendChild(details);
 
       if (isLockedPick) {
@@ -432,7 +454,9 @@
       const byeWeek = info && info.bye !== null && info.bye !== undefined ? info.bye : null;
       const onBye = byeWeek !== null && byeWeek === state.currentWeek;
       const threeD = info && info.threeDValue !== null && info.threeDValue !== undefined ? info.threeDValue.toFixed(1) : '';
-      const weekly = info && info.weeklyProjection !== null && info.weeklyProjection !== undefined ? info.weeklyProjection.toFixed(1) : '';
+      const weeklyMatchesViewedWeek = info && info.weeklyProjectionWeek === state.currentWeek
+        && info.weeklyProjection !== null && info.weeklyProjection !== undefined;
+      const weekly = weeklyMatchesViewedWeek ? info.weeklyProjection.toFixed(1) : '';
       return '<tr>'
         + '<td data-label="Slot">' + esc(p.lineupSlot) + '</td>'
         + '<td data-label="Player">' + esc(p.player) + '</td>'
@@ -538,6 +562,7 @@
       players[row.player] = {
         team: row.team, position: row.position, bye: row.bye,
         injuryRisk: row.injury_risk, threeDValue: row.three_d_value, weeklyProjection: row.weekly_projection,
+        weeklyProjectionWeek: row.weekly_projection_week,
       };
     }
     return players;
