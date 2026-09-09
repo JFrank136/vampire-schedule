@@ -146,9 +146,13 @@
     return bench[0] || null;
   }
 
+  // An out starter with a bench replacement contributes the replacement's
+  // value, not their own 0 -- a realistic manager swaps them in, so the
+  // team's projected total (and the weakest-opponent ranking/margin built on
+  // it) should reflect that lineup, not count a guaranteed zero.
   function teamWeekScore(teamPlayers, draftSharksData, week) {
     return teamWeekBreakdown(teamPlayers, draftSharksData, week)
-      .reduce((total, row) => total + (row.value || 0), 0);
+      .reduce((total, row) => total + ((row.replacement ? row.replacement.value : row.value) || 0), 0);
   }
 
   global.playerScore = playerScore;

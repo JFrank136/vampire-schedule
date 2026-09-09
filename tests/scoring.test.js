@@ -116,6 +116,21 @@ test('teamWeekScore zeroes out a starter on bye', () => {
   assert.equal(score, 0 + 0);
 });
 
+test('teamWeekScore substitutes an out starter\'s bench replacement value instead of counting them as 0', () => {
+  const draftsharks = {
+    'Bijan Robinson': { bye: null, injuryRisk: 12, threeDValue: 90, weeklyProjection: null, weeklyProjectionWeek: null }, // excluded from week 3
+    'Drake London': { bye: 5, injuryRisk: 8, threeDValue: 80, weeklyProjection: 24.5, weeklyProjectionWeek: 3 },
+    'Backup Runner': { bye: null, injuryRisk: 5, threeDValue: 22, weeklyProjection: 15.5, weeklyProjectionWeek: 3 },
+  };
+  const team = [
+    { player: 'Bijan Robinson', position: 'RB', lineupSlot: 'RB1', starter: true },
+    { player: 'Drake London', position: 'WR', lineupSlot: 'WR1', starter: true },
+    { player: 'Backup Runner', position: 'RB', lineupSlot: 'BENCH', starter: false },
+  ];
+  const score = teamWeekScore(team, draftsharks, 3); // week 3 is published -> Bijan is excluded/out
+  assert.equal(score, 15.5 + 24.5); // Backup Runner's real week-3 number swapped in for Bijan's 0, plus London's
+});
+
 test('teamBenchTopPlayer picks the highest 3D Value bench player', () => {
   const team = [
     { player: 'Bijan Robinson', position: 'RB', lineupSlot: 'RB1', starter: true },
