@@ -36,7 +36,7 @@ declared in `package.json`.)
 
 ## Data
 
-Two source files feed this tool, both maintained outside this repo:
+Two source files feed this tool at draft time, both maintained outside this repo:
 
 - `../rosters.csv` — this season's rosters, one row per player
 - A DraftSharks CSV export (path varies; see `docs/DATA.md`) — player values,
@@ -48,6 +48,13 @@ these two files and how it's handled.
 
 Refreshing this data is a repeatable process — see the `vampire-matchup-refresh`
 skill rather than re-deriving the steps each time.
+
+Once the season starts, `scripts/refresh-weekly-projection.js` separately
+keeps `weekly_projection` current from the sibling `../../in-season/` project's
+weekly Draft Sharks pull — see `docs/DATA.md`'s "Weekly projection refresh"
+section. That project also has its own scheduled pull (a Windows Task
+Scheduler job + a same-purpose in-app scheduled task as backup notification)
+so this stays fresh without a manual step during the season.
 
 ## Architecture note: why this uses Supabase, not a Claude Artifact
 
@@ -94,6 +101,21 @@ browsing rosters) needs zero Claude/script involvement.
   steps don't touch it. Don't add an `npm ci`/`npm install` step to CI for
   this reason (it hung for 5+ minutes on the hosted runner installing a
   dependency nothing in CI actually needs).
+- `scripts/refresh-weekly-projection.js` (new this session) is the other
+  Supabase-writing script alongside `refresh-data.js` — also uses
+  `@supabase/supabase-js`, also local-only, also not part of CI.
+- Each opponent's lineup card shows both `Weekly Proj.` and `3D Value` as
+  separate columns (not blended into one number), plus a `Status` column: a
+  starter who's on bye, or who Draft Sharks excludes from a week it HAS
+  published data for (their weekly rankings drop inactive/injured players
+  entirely rather than listing them at 0 — confirmed live against
+  draftsharks.com), is flagged `out` and matched to the best eligible bench
+  replacement by slot position (FLEX = RB/WR/TE). The card's total projected
+  score substitutes that replacement's value in place of the out starter's 0.
+  A `BENCH` row also shows the roster's best FLEX-eligible bench player
+  (RB/WR/TE only — a backup QB isn't a usable flex), scored the same
+  week-aware way. See `docs/DATA.md`'s "Weekly projection: week-scoped, and
+  what 'out' means" section for the full mechanics.
 
 ## Not yet built
 

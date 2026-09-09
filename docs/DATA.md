@@ -15,8 +15,17 @@ call, not an oversight (low-stakes data, no-login model).
 - **`vampire_player_values`** — one row per player. `player` (PK), `team`,
   `position`, `bye`, `injury_risk`, `three_d_value`, `weekly_projection`
   (nullable — populated once DraftSharks publishes in-season weekly numbers;
-  scoring falls back to `three_d_value` until then). Also wholesale-replaced
-  by `scripts/refresh-data.js`.
+  scoring falls back to `three_d_value` until then), `weekly_projection_week`
+  (nullable int — which week `weekly_projection` is actually *for*; see below).
+
+  **Gotcha:** `scripts/refresh-data.js` deletes and reinserts this table
+  *wholesale* (draft-time roster/DraftSharks refresh), and its row-builder
+  (`build-rows.js`'s `buildPlayerValueRows`) never sets `weekly_projection`
+  or `weekly_projection_week` — so running `refresh-data.js` mid-season
+  silently wipes both back to `null` for every player. Always re-run
+  `refresh-weekly-projection.js` for the current week immediately after any
+  `refresh-data.js` run during the season, or the app will show blank
+  weekly numbers for everyone until that's caught.
 - **`vampire_settings`** — single row (`id boolean` PK, always `true`).
   `last_regular_season_week, restricted_window_start, restricted_window_end,
   max_meetings_per_opponent`. Currently `13, 5, 13, 2`. Not editable in-app —
@@ -65,6 +74,42 @@ takes the row with the latest `pulled_at` per player. Refuses to run (exits 1,
 updates nothing) if the match rate comes in under 50% — a low rate almost
 always means a name-matching or CSV-shape problem, not that many players are
 genuinely unranked, and partial/wrong data here is worse than none.
+
+Sets `weekly_projection_week = <week>` on every row it updates, alongside
+`weekly_projection` — see the next section for why.
+
+## Weekly projection: week-scoped, and what "out" means (`src/scoring.js`)
+
+`weekly_projection` is a single column that always reflects whichever week
+`refresh-weekly-projection.js` last ran for — there's no per-week history.
+`weekly_projection_week` records which week that number is actually *for*,
+so `playerScore()` only trusts it when the week being viewed matches; any
+other week (most commonly: paging the picker forward to a week that hasn't
+been pulled yet) falls back to `three_d_value` for the team-total/ranking
+math, but shows a blank `Weekly Proj.` cell rather than a number that isn't
+really about that week. `weekHasPublishedData()` checks whether *any* player
+has `weekly_projection_week === week` — i.e. whether Draft Sharks has
+published that week at all yet.
+
+**A rostered starter missing from a week Draft Sharks HAS published is
+treated as excluded (out, scores 0), not "unknown."** Confirmed live against
+draftsharks.com/weekly-rankings/rb: Draft Sharks drops inactive/injured
+players from a week's rankings table entirely rather than listing them with
+a `0` — searching a live week's rankings by name for such a player returns
+zero rows, not a zero-value row. So "no data for a live week" is a real
+signal (they're out), not a data gap, and the UI/scoring treat it that way:
+`isOut` covers both bye and this exclusion case, the lineup card hides the
+now-irrelevant `3D Value` for an out player, and `teamWeekBreakdown` matches
+them to the best eligible bench replacement by slot position
+(`eligiblePositionsForSlot` — FLEX accepts RB/WR/TE, everything else is a
+strict match). `teamWeekScore` substitutes that replacement's value in place
+of the starter's 0, so the team total reflects the realistic swapped-in
+lineup, not a guaranteed zero. The bench itself is scored the same
+week-aware way (`scoredBench`) rather than by static `three_d_value`, so a
+hot-projected backup outranks a higher-draft-value one that's cold this
+week; `teamBenchTopPlayer` (the card's `BENCH`/`top bench` row) restricts
+this to FLEX-eligible positions only — a backup QB is never useful here in
+a 1-QB league.
 
 ## The player-name gotcha
 
