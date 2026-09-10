@@ -13,19 +13,22 @@ call, not an oversight (low-stakes data, no-login model).
   the Vampire; the other 9 are the league's other teams. Wiped and
   re-inserted wholesale by `scripts/refresh-data.js`.
 - **`vampire_player_values`** — one row per player. `player` (PK), `team`,
-  `position`, `bye`, `injury_risk`, `three_d_value`, `weekly_projection`
-  (nullable — populated once DraftSharks publishes in-season weekly numbers;
-  scoring falls back to `three_d_value` until then), `weekly_projection_week`
-  (nullable int — which week `weekly_projection` is actually *for*; see below).
+  `position`, `bye`, `injury_risk`, `three_d_value`, and two rolling
+  "current"/"next" weekly-projection slots: `weekly_projection` /
+  `weekly_projection_week`, and `weekly_projection_next` /
+  `weekly_projection_next_week` (all nullable — populated once DraftSharks
+  publishes in-season weekly numbers; scoring falls back to `three_d_value`
+  until then). Both slots are kept pushed at once so every available week's
+  projection stays visible until that week has actually passed — see below.
 
   **Gotcha:** `scripts/refresh-data.js` deletes and reinserts this table
   *wholesale* (draft-time roster/DraftSharks refresh), and its row-builder
-  (`build-rows.js`'s `buildPlayerValueRows`) never sets `weekly_projection`
-  or `weekly_projection_week` — so running `refresh-data.js` mid-season
-  silently wipes both back to `null` for every player. Always re-run
-  `refresh-weekly-projection.js` for the current week immediately after any
-  `refresh-data.js` run during the season, or the app will show blank
-  weekly numbers for everyone until that's caught.
+  (`build-rows.js`'s `buildPlayerValueRows`) never sets any of the four
+  weekly-projection columns — so running `refresh-data.js` mid-season
+  silently wipes all of them back to `null` for every player. Always re-run
+  `refresh-weekly-projection.js` for both the current and next week
+  immediately after any `refresh-data.js` run during the season, or the app
+  will show blank weekly numbers for everyone until that's caught.
 - **`vampire_settings`** — single row (`id boolean` PK, always `true`).
   `last_regular_season_week, restricted_window_start, restricted_window_end,
   max_meetings_per_opponent`. Currently `13, 5, 13, 2`. Not editable in-app —
@@ -56,16 +59,17 @@ column gets renamed on either side.
   Parsed by `src/draftsharks-parser.js`.
 - `../../in-season/data/processed/rankings_long.csv` — the in-season weekly
   pipeline's output (see that project's README/docs/DATA.md). Used only by
-  `scripts/refresh-weekly-projection.js` (below) to populate
-  `weekly_projection` once the season starts; the draft-time refresh above is
-  unrelated to it.
+  `scripts/refresh-weekly-projection.js` (below) to populate the
+  current/next projection slots once the season starts; the draft-time
+  refresh above is unrelated to it.
 
 ## Weekly projection refresh (`scripts/refresh-weekly-projection.js`)
 
-`node scripts/refresh-weekly-projection.js ../../in-season/data/processed/rankings_long.csv <week> [scoring]`
-(`scoring` defaults to `half-ppr`, matching this league). Unlike
-`refresh-data.js`, this **never wipes** `vampire_player_values` — it's a
-targeted `UPDATE ... SET weekly_projection` per matched player, using Draft
+`node scripts/refresh-weekly-projection.js ../../in-season/data/processed/rankings_long.csv <week> [scoring] [slot]`
+(`scoring` defaults to `half-ppr`, matching this league; `slot` defaults to
+`current`, the only other value is `next`). Unlike `refresh-data.js`, this
+**never wipes** `vampire_player_values` — it's a targeted
+`UPDATE ... SET weekly_projection[_next]` per matched player, using Draft
 Sharks' `weekly3dPts` ("3D Proj") for that week/scoring, matched onto
 `vampire_player_values.player` via the same `normalizeName` alias-matching
 `src/scoring.js` already uses (not a separate/forked matcher). The CSV is
@@ -75,21 +79,32 @@ updates nothing) if the match rate comes in under 50% — a low rate almost
 always means a name-matching or CSV-shape problem, not that many players are
 genuinely unranked, and partial/wrong data here is worse than none.
 
-Sets `weekly_projection_week = <week>` on every row it updates, alongside
-`weekly_projection` — see the next section for why.
+Sets `weekly_projection_week` (or `weekly_projection_next_week` for the
+`next` slot) on every row it updates, alongside the projection value itself
+— see the next section for why. `in-season/scripts/scheduled_pull.ps1` calls
+this script twice per daily run: once for the current week (slot `current`)
+and once for current+1 (slot `next`, skipped once the season's last week has
+already been pushed as `current`).
 
-## Weekly projection: week-scoped, and what "out" means (`src/scoring.js`)
+## Weekly projection: two rolling slots, and what "out" means (`src/scoring.js`)
 
-`weekly_projection` is a single column that always reflects whichever week
-`refresh-weekly-projection.js` last ran for — there's no per-week history.
-`weekly_projection_week` records which week that number is actually *for*,
-so `playerScore()` only trusts it when the week being viewed matches; any
-other week (most commonly: paging the picker forward to a week that hasn't
-been pulled yet) falls back to `three_d_value` for the team-total/ranking
-math, but shows a blank `Weekly Proj.` cell rather than a number that isn't
-really about that week. `weekHasPublishedData()` checks whether *any* player
-has `weekly_projection_week === week` — i.e. whether Draft Sharks has
-published that week at all yet.
+Per Jared: every available week's projection should stay visible until that
+week has actually passed, not just the single nearest one — so two slots are
+kept pushed at once instead of one. `weekly_projection`/`weekly_projection_week`
+holds the current week; `weekly_projection_next`/`weekly_projection_next_week`
+holds the next one. There's still no deeper per-week history than that — once
+a week passes, the daily pull shifts both slots forward (this week's `next`
+becomes next visit's `current`).
+
+`projectionForWeek(info, week)` (in `src/scoring.js`) checks both slots for a
+match against the week being viewed and returns whichever one covers it (or
+`undefined` if neither slot is for that week at all — e.g. paging the picker
+two or more weeks ahead of a week that hasn't been pulled yet). `playerScore()`
+and the roster-view render in `template.html` both go through this helper
+rather than checking either column directly, so they can't drift out of sync
+with each other about which weeks currently have real data. `weekHasPublishedData()`
+checks whether *any* player has `week` in either slot — i.e. whether Draft
+Sharks has published that week at all yet.
 
 **A rostered starter missing from a week Draft Sharks HAS published is
 treated as excluded (out, scores 0), not "unknown."** Confirmed live against

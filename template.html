@@ -454,9 +454,8 @@
       const byeWeek = info && info.bye !== null && info.bye !== undefined ? info.bye : null;
       const onBye = byeWeek !== null && byeWeek === state.currentWeek;
       const threeD = info && info.threeDValue !== null && info.threeDValue !== undefined ? info.threeDValue.toFixed(1) : '';
-      const weeklyMatchesViewedWeek = info && info.weeklyProjectionWeek === state.currentWeek
-        && info.weeklyProjection !== null && info.weeklyProjection !== undefined;
-      const weekly = weeklyMatchesViewedWeek ? info.weeklyProjection.toFixed(1) : '';
+      const matchedProjection = info ? projectionForWeek(info, state.currentWeek) : undefined;
+      const weekly = (matchedProjection !== undefined && matchedProjection !== null) ? matchedProjection.toFixed(1) : '';
       return '<tr>'
         + '<td data-label="Slot">' + esc(p.lineupSlot) + '</td>'
         + '<td data-label="Player">' + esc(p.player) + '</td>'
@@ -563,6 +562,8 @@
         team: row.team, position: row.position, bye: row.bye,
         injuryRisk: row.injury_risk, threeDValue: row.three_d_value, weeklyProjection: row.weekly_projection,
         weeklyProjectionWeek: row.weekly_projection_week,
+        weeklyProjectionNext: row.weekly_projection_next,
+        weeklyProjectionNextWeek: row.weekly_projection_next_week,
       };
     }
     return players;

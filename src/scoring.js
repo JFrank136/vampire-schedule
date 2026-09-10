@@ -44,21 +44,32 @@
   }
 
   // Is `week` a week Draft Sharks actually published projections for, at
-  // all (i.e. at least one player in the pool has weeklyProjectionWeek ===
-  // week)? Distinguishes "this player is missing because the week hasn't
+  // all (i.e. at least one player in the pool has that week in either slot
+  // below)? Distinguishes "this player is missing because the week hasn't
   // been pulled yet" (blank -- nobody has a number) from "this player is
   // missing even though the week WAS pulled" (they were excluded -- Draft
   // Sharks drops inactive/injured players from the list entirely instead of
   // ranking them at 0, confirmed live on draftsharks.com/weekly-rankings/rb).
   function weekHasPublishedData(draftSharksData, week) {
-    return Object.values(draftSharksData).some((info) => info.weeklyProjectionWeek === week);
+    return Object.values(draftSharksData).some(
+      (info) => info.weeklyProjectionWeek === week || info.weeklyProjectionNextWeek === week
+    );
   }
 
-  // weekly_projection is a single column that always reflects whichever week
-  // was last pushed by refresh-weekly-projection.js -- weeklyProjectionWeek
-  // records which week that actually was, so viewing any other week (e.g.
-  // paging forward to a future week that hasn't been pulled yet) correctly
-  // shows no weekly number instead of stale/mismatched data.
+  // Two rolling slots ("current" and "next") are kept pushed at once, per
+  // Jared: every available week's projection should stay visible until that
+  // week has actually passed, not just the single nearest one. Returns the
+  // matched projection for `week` (from whichever slot holds it, checked
+  // current-then-next since a scheduling hiccup could leave next stale after
+  // current has already rolled forward), or undefined if neither slot is for
+  // this week at all (as opposed to null, meaning the slot matched but Draft
+  // Sharks had no number for this player).
+  function projectionForWeek(info, week) {
+    if (info.weeklyProjectionWeek === week) return info.weeklyProjection != null ? info.weeklyProjection : null;
+    if (info.weeklyProjectionNextWeek === week) return info.weeklyProjectionNext != null ? info.weeklyProjectionNext : null;
+    return undefined;
+  }
+
   function playerScore(playerName, draftSharksData, week, weekHasData) {
     const info = findPlayerInfo(playerName, draftSharksData);
     if (!info) return { value: 0, hasData: false, onBye: false, injuryRisk: null, found: false, weeklyProjection: null, threeDValue: null };
@@ -67,9 +78,10 @@
     const onBye = info.bye === week;
     const threeDValue = info.threeDValue != null ? info.threeDValue : null;
 
+    const slotProjection = projectionForWeek(info, week);
     let weeklyProjection;
-    if (info.weeklyProjectionWeek === week && info.weeklyProjection != null) {
-      weeklyProjection = info.weeklyProjection;
+    if (slotProjection !== undefined && slotProjection != null) {
+      weeklyProjection = slotProjection;
     } else if (!onBye && hasWeekData) {
       // This week was published but this player isn't in it -- excluded
       // (inactive/injured), which functionally means 0, not "unknown".
@@ -162,10 +174,11 @@
   global.findPlayerInfo = findPlayerInfo;
   global.eligiblePositionsForSlot = eligiblePositionsForSlot;
   global.weekHasPublishedData = weekHasPublishedData;
+  global.projectionForWeek = projectionForWeek;
   if (typeof module !== 'undefined') {
     module.exports = {
       playerScore, teamWeekBreakdown, teamBenchTopPlayer, teamWeekScore, findPlayerInfo,
-      eligiblePositionsForSlot, weekHasPublishedData,
+      eligiblePositionsForSlot, weekHasPublishedData, projectionForWeek,
     };
   }
 })(typeof window !== 'undefined' ? window : global);

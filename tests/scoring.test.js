@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   playerScore, teamWeekBreakdown, teamBenchTopPlayer, teamWeekScore,
-  findPlayerInfo, eligiblePositionsForSlot, weekHasPublishedData,
+  findPlayerInfo, eligiblePositionsForSlot, weekHasPublishedData, projectionForWeek,
 } = require('../src/scoring.js');
 
 // A "published" week (some player has weeklyProjectionWeek === 3) vs weeks
@@ -51,6 +51,33 @@ test('a weekly projection pulled for a different week than the one being viewed 
   const score = playerScore('Drake London', DRAFTSHARKS, 4); // week 4 not published; London's number is for week 3
   assert.equal(score.value, 80); // falls back to 3D Value
   assert.equal(score.weeklyProjection, null);
+});
+
+test('the "next" slot is checked when the viewed week is not the current slot\'s week', () => {
+  const draftsharks = {
+    'Two Slot Guy': {
+      bye: null, injuryRisk: 10, threeDValue: 50,
+      weeklyProjection: 12.3, weeklyProjectionWeek: 3,
+      weeklyProjectionNext: 18.7, weeklyProjectionNextWeek: 4,
+    },
+  };
+  assert.equal(playerScore('Two Slot Guy', draftsharks, 3).weeklyProjection, 12.3);
+  assert.equal(playerScore('Two Slot Guy', draftsharks, 4).weeklyProjection, 18.7);
+  assert.equal(playerScore('Two Slot Guy', draftsharks, 5).weeklyProjection, null);
+});
+
+test('weekHasPublishedData is true for a week that only appears in the "next" slot', () => {
+  const draftsharks = {
+    'Next Only': { bye: null, injuryRisk: null, threeDValue: 50, weeklyProjection: null, weeklyProjectionWeek: null, weeklyProjectionNext: 9.5, weeklyProjectionNextWeek: 4 },
+  };
+  assert.equal(weekHasPublishedData(draftsharks, 4), true);
+  assert.equal(weekHasPublishedData(draftsharks, 5), false);
+});
+
+test('projectionForWeek distinguishes "no slot for this week" (undefined) from "slot matched but no number" (null)', () => {
+  const info = { weeklyProjection: null, weeklyProjectionWeek: 3, weeklyProjectionNext: null, weeklyProjectionNextWeek: null };
+  assert.equal(projectionForWeek(info, 3), null);
+  assert.equal(projectionForWeek(info, 4), undefined);
 });
 
 test('scores a bye-week player as 0 regardless of whether the week is published', () => {

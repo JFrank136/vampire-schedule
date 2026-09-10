@@ -1,10 +1,17 @@
 // scripts/refresh-weekly-projection.js
 //
-// Updates ONLY vampire_player_values.weekly_projection for the current week,
-// from the ../../in-season/data/processed/rankings_long.csv pipeline's Draft
-// Sharks pull -- unlike refresh-data.js, this never wipes the table. It's a
+// Updates ONLY vampire_player_values' weekly-projection columns from the
+// ../../in-season/data/processed/rankings_long.csv pipeline's Draft Sharks
+// pull -- unlike refresh-data.js, this never wipes the table. It's a
 // targeted UPDATE per matched player, so team/position/bye/injury_risk/
 // three_d_value (all set at draft time) are left untouched.
+//
+// Two rolling slots are kept populated at once -- "current" (weekly_projection
+// / weekly_projection_week) and "next" (weekly_projection_next /
+// weekly_projection_next_week) -- per Jared: every available week's
+// projection should stay visible until that week has actually passed, not
+// just the single nearest one. scheduled_pull.ps1 calls this script twice
+// per run, once per slot.
 //
 // Draft Sharks only, not blended with Boone/Smyth: those two only carry a
 // rank in this pipeline (in-season/src/sources/yahoo_weekly_consensus.py
@@ -12,20 +19,32 @@
 // there's nothing numeric to average in. Boone/Smyth ranks feed other
 // in-season tools instead.
 //
-// Usage: node scripts/refresh-weekly-projection.js <rankings_long.csv> <week> [scoring]
+// Usage: node scripts/refresh-weekly-projection.js <rankings_long.csv> <week> [scoring] [slot]
 //   scoring defaults to "half-ppr" -- this league is 0.5 PPR (see docs/DATA.md).
+//   slot defaults to "current"; the only other value is "next".
 const fs = require('fs');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const { parseCSV } = require('../src/csv-parser.js');
 const { normalizeName } = require('../src/name-matching.js');
 
+const SLOT_COLUMNS = {
+  current: { projection: 'weekly_projection', week: 'weekly_projection_week' },
+  next: { projection: 'weekly_projection_next', week: 'weekly_projection_next_week' },
+};
+
 async function main() {
-  const [, , csvPath, weekArg, scoringArg] = process.argv;
+  const [, , csvPath, weekArg, scoringArg, slotArg] = process.argv;
   const week = Number(weekArg);
   const scoring = scoringArg || 'half-ppr';
+  const slot = slotArg || 'current';
   if (!csvPath || !weekArg || Number.isNaN(week)) {
-    console.error('Usage: node scripts/refresh-weekly-projection.js <rankings_long.csv> <week> [scoring]');
+    console.error('Usage: node scripts/refresh-weekly-projection.js <rankings_long.csv> <week> [scoring] [slot]');
+    process.exit(1);
+  }
+  const columns = SLOT_COLUMNS[slot];
+  if (!columns) {
+    console.error(`Unknown slot "${slot}" -- must be "current" or "next".`);
     process.exit(1);
   }
 
@@ -81,7 +100,7 @@ async function main() {
   for (const { player } of playerValues) {
     const row = normalizedIndex.get(normalizeName(player));
     if (row) {
-      matched.push({ player, weekly_projection: Number(row.projection), weekly_projection_week: week });
+      matched.push({ player, [columns.projection]: Number(row.projection), [columns.week]: week });
     } else {
       unmatchedPlayers.push(player);
     }
@@ -90,7 +109,7 @@ async function main() {
   const matchRate = matched.length / playerValues.length;
   console.log(
     `Matched ${matched.length}/${playerValues.length} vampire_player_values rows ` +
-    `(${(matchRate * 100).toFixed(0)}%) to week ${week} ${scoring} projections.`
+    `(${(matchRate * 100).toFixed(0)}%) to week ${week} ${scoring} projections (slot: ${slot}).`
   );
   if (matchRate < 0.5) {
     console.error(
@@ -107,12 +126,12 @@ async function main() {
   for (const row of matched) {
     const { error } = await supabase
       .from('vampire_player_values')
-      .update({ weekly_projection: row.weekly_projection, weekly_projection_week: row.weekly_projection_week })
+      .update({ [columns.projection]: row[columns.projection], [columns.week]: row[columns.week] })
       .eq('player', row.player);
     if (error) throw error;
   }
 
-  console.log(`Done. Updated weekly_projection for ${matched.length} players (week ${week}, ${scoring}).`);
+  console.log(`Done. Updated ${columns.projection} for ${matched.length} players (week ${week}, ${scoring}, slot: ${slot}).`);
 }
 
 main().catch((err) => {
