@@ -70,12 +70,13 @@ async function main() {
   }
 
   // A week can appear multiple times (Draft Sharks rankings get re-pulled
-  // until it's played) -- the CSV is append-only, so keep only the latest
-  // pulled_at per player.
+  // until it's played) -- the CSV is append-only. Only trust the single
+  // most recent pull: a player missing from it (e.g. ruled out/inactive)
+  // must not fall back to a stale row from an earlier pull.
+  const latestPulledAt = weekRows.reduce((max, r) => (r.pulled_at > max ? r.pulled_at : max), '');
   const latestByName = new Map();
   for (const row of weekRows) {
-    const existing = latestByName.get(row.player_name);
-    if (!existing || row.pulled_at > existing.pulled_at) {
+    if (row.pulled_at === latestPulledAt) {
       latestByName.set(row.player_name, row);
     }
   }
@@ -102,6 +103,9 @@ async function main() {
     if (row) {
       matched.push({ player, [columns.projection]: Number(row.projection), [columns.week]: week });
     } else {
+      // Not in this week's latest pull (e.g. ruled out/inactive) -- zero
+      // out rather than leaving a stale projection from an earlier pull.
+      matched.push({ player, [columns.projection]: 0, [columns.week]: week });
       unmatchedPlayers.push(player);
     }
   }
