@@ -13,13 +13,16 @@ call, not an oversight (low-stakes data, no-login model).
   the Vampire; the other 9 are the league's other teams. Wiped and
   re-inserted wholesale by `scripts/refresh-data.js`.
 - **`vampire_player_values`** — one row per player. `player` (PK), `team`,
-  `position`, `bye`, `injury_risk`, `three_d_value`, and two rolling
+  `position`, `bye`, `injury_risk`, `three_d_value`, two rolling
   "current"/"next" weekly-projection slots: `weekly_projection` /
   `weekly_projection_week`, and `weekly_projection_next` /
   `weekly_projection_next_week` (all nullable — populated once DraftSharks
   publishes in-season weekly numbers; scoring falls back to `three_d_value`
-  until then). Both slots are kept pushed at once so every available week's
-  projection stays visible until that week has actually passed — see below.
+  until then), and (added 2026-09-16) two matching opponent columns,
+  `weekly_opponent` / `weekly_opponent_next` (nullable text, e.g. `"@DAL"`,
+  `"BUF"`) — see "Weekly opponent" below. Both slots are kept pushed at once
+  so every available week's projection stays visible until that week has
+  actually passed — see below.
 
   **Gotcha:** `scripts/refresh-data.js` deletes and reinserts this table
   *wholesale* (draft-time roster/DraftSharks refresh), and its row-builder
@@ -130,6 +133,31 @@ hot-projected backup outranks a higher-draft-value one that's cold this
 week; `teamBenchTopPlayer` (the card's `BENCH`/`top bench` row) restricts
 this to FLEX-eligible positions only — a backup QB is never useful here in
 a 1-QB league.
+
+## Weekly opponent (`weekly_opponent` / `weekly_opponent_next`)
+
+Same two-slot rolling pattern as the projection columns, populated by the
+same `refresh-weekly-projection.js` run (no separate script) from the
+in-season CSV's `opponent` field (e.g. `"@DAL"` = away vs. Dallas, `"BUF"` =
+home vs. Buffalo). `src/scoring.js`'s `opponentForWeek(info, week)` mirrors
+`projectionForWeek()` exactly — same current-then-next slot check, same
+`undefined` (no slot covers this week) vs. `null` (slot matched, no value)
+distinction — and `playerScore()` surfaces the result as `.opponent` so both
+the weekly picker's lineup tables and the Rosters tab render it without a
+separate lookup path.
+
+**Same-name collision gotcha:** the Draft Sharks CSV can contain two
+different real players who share an exact name — e.g. WR Justin Jefferson
+(MIN) and a linebacker also named Justin Jefferson (CLE) both appeared in the
+week 2 pull. `refresh-weekly-projection.js` used to key its per-week lookup
+by name alone, so whichever row came later in the CSV silently won,
+overwriting the WR's ~14.5 projection with the LB's 2.3. Fixed 2026-09-16:
+the script now keeps every same-normalized-name candidate row and picks the
+one whose `position` matches `vampire_player_values.position` for that
+player; if none match, it zeroes out that slot (logged as "ambiguous") rather
+than guessing. If a known-good player's projection looks implausibly low
+after a refresh, check the script's "Ambiguous name collisions" log line
+first before assuming a data-quality issue upstream.
 
 ## The player-name gotcha
 

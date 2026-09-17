@@ -46,15 +46,20 @@ See `docs/DATA.md` for the full schema, the Supabase tables the app actually
 reads/writes, and — importantly — the player-name mismatch problem between
 these two files and how it's handled.
 
-Refreshing this data is a repeatable process — see the `vampire-matchup-refresh`
-skill rather than re-deriving the steps each time.
+Refreshing this data is a repeatable process — see the "Matchup Tool" section
+of `INSTRUCTIONS.md` at the Vampire project root rather than re-deriving the
+steps each time (there is no separate `vampire-matchup-refresh` skill,
+despite this file previously referencing one).
 
 Once the season starts, `scripts/refresh-weekly-projection.js` separately
-keeps `weekly_projection` current from the sibling `../../in-season/` project's
-weekly Draft Sharks pull — see `docs/DATA.md`'s "Weekly projection refresh"
-section. That project also has its own scheduled pull (a Windows Task
-Scheduler job + a same-purpose in-app scheduled task as backup notification)
-so this stays fresh without a manual step during the season.
+keeps two rolling projection slots current (current week + next week, see
+"Current state" below) from the sibling `../../in-season/` project's weekly
+Draft Sharks pull — see `docs/DATA.md`'s "Weekly projection refresh" section.
+That project's own Windows Task Scheduler job (`FantasyInSeasonPull`) drives
+this daily without a manual step; it's hardened against the wake-from-sleep
+network race (connectivity gate + auto-retry + a failure email to Jared) —
+see the `harden-scheduled-task` skill for the general pattern if this needs
+touching again.
 
 ## Architecture note: why this uses Supabase, not a Claude Artifact
 
@@ -104,6 +109,14 @@ browsing rosters) needs zero Claude/script involvement.
 - `scripts/refresh-weekly-projection.js` (new this session) is the other
   Supabase-writing script alongside `refresh-data.js` — also uses
   `@supabase/supabase-js`, also local-only, also not part of CI.
+- Two rolling weekly-projection slots (as of 2026-09-10): `vampire_player_values`
+  keeps both the current week's and next week's numbers at once
+  (`weekly_projection`/`weekly_projection_week` and
+  `weekly_projection_next`/`weekly_projection_next_week`), so every available
+  week's projection stays visible until that week has actually passed instead
+  of only the single nearest one. `src/scoring.js`'s `projectionForWeek()` is
+  the shared lookup — `playerScore()` and the roster-view render both go
+  through it rather than checking either column directly. See `docs/DATA.md`.
 - Each opponent's lineup card shows both `Weekly Proj.` and `3D Value` as
   separate columns (not blended into one number), plus a `Status` column: a
   starter who's on bye, or who Draft Sharks excludes from a week it HAS
@@ -116,6 +129,18 @@ browsing rosters) needs zero Claude/script involvement.
   (RB/WR/TE only — a backup QB isn't a usable flex), scored the same
   week-aware way. See `docs/DATA.md`'s "Weekly projection: week-scoped, and
   what 'out' means" section for the full mechanics.
+- (2026-09-16) The weekly picker's "Me" card now shows the same per-player
+  lineup table opponent cards do (not just the aggregate score), and every
+  lineup table (Me, each opponent, and the Rosters tab) has an `Opp` column
+  showing that player's real-world opponent for the week (e.g. `@DAL`) —
+  see `docs/DATA.md`'s "Weekly opponent" section.
+- (2026-09-16) Eligibility (`src/rules.js`) now enforces "played this team at
+  most once" per season **stretch** (pre-window / restricted-window /
+  post-window), not just within the restricted window — locking a team in
+  weeks 1–4 now excludes them from the rest of weeks 1–4 too.
+- (2026-09-16) Weekly picker defaults to week 2 (was week 1) and the page
+  widens on desktop (≥1100px) to fit more cards per row; mobile layout is
+  unchanged.
 
 ## Not yet built
 
@@ -125,4 +150,7 @@ for weeks 5–13, explainability) — scoped as a separate future project in
 `../docs/superpowers/specs/2026-09-03-vampire-picker-v1.1-design.md`, not
 started.
 
-A side-by-side Me-vs-opponent lineup comparison view — also deferred.
+(A side-by-side Me-vs-opponent lineup comparison was also listed here as
+deferred — partially addressed 2026-09-16: the "Me" card now shows its own
+lineup breakdown in the same grid as opponents, though it's not a literal
+side-by-side single view.)
