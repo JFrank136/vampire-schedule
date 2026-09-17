@@ -73,11 +73,16 @@ column gets renamed on either side.
 Sharks' `weekly3dPts` ("3D Proj") for that week/scoring, matched onto
 `vampire_player_values.player` via the same `normalizeName` alias-matching
 `src/scoring.js` already uses (not a separate/forked matcher). The CSV is
-append-only across re-pulls of a not-yet-played week, so this script always
-takes the row with the latest `pulled_at` per player. Refuses to run (exits 1,
-updates nothing) if the match rate comes in under 50% — a low rate almost
-always means a name-matching or CSV-shape problem, not that many players are
-genuinely unranked, and partial/wrong data here is worse than none.
+append-only across re-pulls of a not-yet-played week, so this script only
+trusts rows from the single most recent `pulled_at` timestamp for that
+week/scoring (not each player's own latest row across all pulls) — a player
+present in an earlier pull but absent from the latest one (e.g. ruled
+out/inactive, so Draft Sharks stopped publishing a number for them) gets
+`0` instead of a stale carry-over value from days ago. Refuses to run
+(exits 1, updates nothing) if the match rate comes in under 50% — a low
+rate almost always means a name-matching or CSV-shape problem, not that
+many players are genuinely unranked, and partial/wrong data here is worse
+than none.
 
 Sets `weekly_projection_week` (or `weekly_projection_next_week` for the
 `next` slot) on every row it updates, alongside the projection value itself
