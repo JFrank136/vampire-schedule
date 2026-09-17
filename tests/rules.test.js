@@ -63,6 +63,20 @@ test('a team played once outside the window can still be played once inside it',
   assert.equal(isEligible('Ray', 9, schedule, SETTINGS), true);
 });
 
+test('a team played once in the pre-window stretch cannot be played again in that stretch', () => {
+  const schedule = [{ week: 1, opponent: 'Ray', locked: true }];
+  assert.equal(isEligible('Ray', 3, schedule, SETTINGS), false);
+  assert.equal(
+    ineligibilityReason('Ray', 3, schedule, SETTINGS),
+    'already played this team this stretch of the season',
+  );
+});
+
+test('a team played once in the pre-window stretch can still be played once inside the window', () => {
+  const schedule = [{ week: 1, opponent: 'Ray', locked: true }];
+  assert.equal(isEligible('Ray', 6, schedule, SETTINGS), true);
+});
+
 test('an unlocked (tentative) meeting does not count toward eligibility', () => {
   const schedule = [{ week: 6, opponent: 'Ray', locked: false }];
   assert.equal(isEligible('Ray', 9, schedule, SETTINGS), true);
@@ -111,6 +125,16 @@ test('findScheduleViolations flags two entirely tentative meetings in the window
   ];
   assert.deepEqual(findScheduleViolations(schedule, SETTINGS), [
     { type: 'repeated-in-window', team: 'Bryant', weeks: [7, 8] },
+  ]);
+});
+
+test('findScheduleViolations flags a team played twice in the pre-window stretch', () => {
+  const schedule = [
+    { week: 1, opponent: 'Ray', locked: true },
+    { week: 3, opponent: 'Ray', locked: true },
+  ];
+  assert.deepEqual(findScheduleViolations(schedule, SETTINGS), [
+    { type: 'repeated-in-stretch', team: 'Ray', weeks: [1, 3] },
   ]);
 });
 

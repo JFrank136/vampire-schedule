@@ -67,6 +67,12 @@
     margin: 0 auto;
     padding: 1.5rem 1.25rem 4rem;
   }
+  @media (min-width: 1100px) {
+    /* Wide/desktop viewports get more room so the card grid can lay out
+       several matchup cards per row instead of stacking narrowly. Mobile
+       layout (the max-width:600px block below) is untouched. */
+    body { max-width: 1400px; }
+  }
   h3, h4 { font-family: 'Oswald', 'IBM Plex Sans', sans-serif; font-weight: 500; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text); margin: 1.75rem 0 0.6rem; }
   h3:first-child { margin-top: 0; }
 
@@ -91,7 +97,7 @@
 
   input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-  .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
   .card.ineligible { opacity: 0.6; }
   .card.locked-in { border-color: var(--good); }
@@ -152,15 +158,17 @@
     display: inline-block; margin-left: 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em;
     background: var(--warn-bg); color: var(--warn); padding: 3px 9px; border-radius: 999px; font-family: 'IBM Plex Sans', sans-serif; font-weight: 500;
   }
-  #own-score { background: var(--surface-2); border-left-color: var(--accent); margin-bottom: 1.25rem; }
+  #own-score { background: var(--surface-2); margin-bottom: 1.25rem; }
 
   @media (max-width: 600px) {
-    /* Drop Slot and Weekly Proj. columns to fit Position/Player/3D Value/Bye
-       as a real table with no horizontal scroll. Weekly Proj. is dropped (not
-       just hidden) since it's virtually always blank until DraftSharks
-       publishes weekly numbers — 3D Value is the number that matters until then. */
+    /* Drop Slot and Weekly Proj. columns to fit Player/Opp/Position/3D
+       Value/Bye as a real table with no horizontal scroll. Weekly Proj. is
+       dropped (not just hidden) since it's virtually always blank until
+       DraftSharks publishes weekly numbers — 3D Value is the number that
+       matters until then. Opp stays even on mobile since it's short (e.g.
+       "@DAL"). */
     #roster-table th:nth-child(1), #roster-table td:nth-child(1),
-    #roster-table th:nth-child(5), #roster-table td:nth-child(5) { display: none; }
+    #roster-table th:nth-child(6), #roster-table td:nth-child(6) { display: none; }
     #roster-table th, #roster-table td { padding: 6px 4px; font-size: 12px; }
   }
 </style>
@@ -182,7 +190,7 @@
       <button id="week-next">&rarr;</button>
       <span id="window-badge"></span>
     </div>
-    <div id="own-score" class="row"></div>
+    <div id="own-score" class="card"></div>
     <div id="opponent-list" class="card-grid"></div>
   </div>
 
@@ -193,7 +201,7 @@
       <button id="roster-next">&rarr;</button>
     </div>
     <table id="roster-table">
-      <thead><tr><th>Slot</th><th>Player</th><th>Position</th><th>3D Value</th><th>Weekly Proj.</th><th>Bye</th></tr></thead>
+      <thead><tr><th>Slot</th><th>Player</th><th>Opp</th><th>Position</th><th>3D Value</th><th>Weekly Proj.</th><th>Bye</th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
@@ -223,7 +231,7 @@
     draftsharks: {},
     settings: { lastRegularSeasonWeek: 13, restrictedWindowStart: 5, restrictedWindowEnd: 13, maxMeetingsPerOpponent: 2 },
     scheduleWeeks: [],
-    currentWeek: 1,
+    currentWeek: 2,
     rosterIndex: 0,
     db: null,
   };
@@ -252,6 +260,39 @@
     return Object.keys(state.rosters).filter((t) => t !== 'Me');
   }
 
+  // Shared by the "Me" card and every opponent card, so both show the same
+  // per-player matchup detail (slot, this week's projection, 3D Value,
+  // bye/out status and bench replacement) rather than the opponent side
+  // alone -- lets you eyeball your own lineup's matchups, not just the
+  // aggregate score, when deciding who to play.
+  function lineupTableHTML(breakdown, benchTop) {
+    return '<table class="card-lineup"><thead><tr><th>Slot</th><th>Player</th><th>Opp</th><th>Weekly Proj.</th><th>3D Value</th><th>Status</th></tr></thead>'
+      + '<tbody>' + breakdown.map((p) => {
+        const weeklyText = p.weeklyProjection !== null ? p.weeklyProjection.toFixed(1) : '—';
+        // 3D Value is a season-long draft-day number -- once a player is
+        // flagged out for the week, it's not relevant to this decision and
+        // showing it next to "out" reads as if that's what they'd score.
+        const threeDText = !p.isOut && p.threeDValue !== null ? p.threeDValue.toFixed(1) : '—';
+        const oppText = p.opponent ? esc(p.opponent) : '—';
+        let statusText = '';
+        if (p.onBye) statusText = 'bye';
+        else if (p.isOut) statusText = 'out';
+        if (p.isOut && p.replacement) {
+          statusText += ' → ' + esc(p.replacement.player);
+        }
+        const statusClass = p.onBye || p.isOut ? ' class="bye"' : '';
+        return '<tr><td>' + esc(p.slot) + '</td><td>' + esc(p.player) + '</td><td>' + oppText + '</td><td>' + weeklyText + '</td>'
+          + '<td>' + threeDText + '</td><td' + statusClass + '>' + statusText + '</td></tr>';
+      }).join('')
+      + (benchTop
+        ? '<tr class="card-lineup-bench"><td>BENCH</td><td>' + esc(benchTop.player) + '</td>'
+          + '<td>' + (benchTop.opponent ? esc(benchTop.opponent) : '—') + '</td>'
+          + '<td>' + (benchTop.weeklyProjection !== null ? benchTop.weeklyProjection.toFixed(1) : '—') + '</td>'
+          + '<td>' + (benchTop.threeDValue !== null ? benchTop.threeDValue.toFixed(1) : '—') + '</td><td>top bench</td></tr>'
+        : '')
+      + '</tbody></table>';
+  }
+
   function renderPicker() {
     $('week-label').textContent = 'Week ' + state.currentWeek;
     $('window-badge').textContent = isRestrictedWeek(state.currentWeek, state.settings)
@@ -260,8 +301,16 @@
 
     const me = state.rosters.Me || [];
     const myScore = teamWeekScore(me, state.draftsharks, state.currentWeek);
-    $('own-score').innerHTML = '<div><div style="font-size:12px;color:#777">Your projected score (Me)</div>'
-      + '<div style="font-size:22px;font-weight:600">' + myScore.toFixed(1) + '</div></div>';
+    const myBreakdown = teamWeekBreakdown(me, state.draftsharks, state.currentWeek);
+    const myBenchTop = teamBenchTopPlayer(me, state.draftsharks, state.currentWeek);
+    const myByePlayers = myBreakdown.filter((p) => p.onBye).map((p) => p.player).join(', ');
+    $('own-score').innerHTML = '<div class="card-top">'
+      + '<div class="card-eyebrow">Your team</div>'
+      + '<div class="card-name">Me</div>'
+      + '<div class="card-stats"><span class="card-score">' + myScore.toFixed(1) + '</span></div>'
+      + '</div>'
+      + (myByePlayers ? '<div class="card-strip bye"><strong>Bye:</strong> ' + esc(myByePlayers) + '</div>' : '')
+      + lineupTableHTML(myBreakdown, myBenchTop);
 
     const teams = nonVampireTeams().map((team) => {
       const players = state.rosters[team] || [];
@@ -320,32 +369,9 @@
         card.appendChild(strip);
       }
 
-      const details = document.createElement('table');
-      details.className = 'card-lineup';
-      details.innerHTML = '<thead><tr><th>Slot</th><th>Player</th><th>Weekly Proj.</th><th>3D Value</th><th>Status</th></tr></thead>'
-        + '<tbody>' + entry.breakdown.map((p) => {
-          const weeklyText = p.weeklyProjection !== null ? p.weeklyProjection.toFixed(1) : '—';
-          // 3D Value is a season-long draft-day number -- once a player is
-          // flagged out for the week, it's not relevant to this decision and
-          // showing it next to "out" reads as if that's what they'd score.
-          const threeDText = !p.isOut && p.threeDValue !== null ? p.threeDValue.toFixed(1) : '—';
-          let statusText = '';
-          if (p.onBye) statusText = 'bye';
-          else if (p.isOut) statusText = 'out';
-          if (p.isOut && p.replacement) {
-            statusText += ' → ' + esc(p.replacement.player);
-          }
-          const statusClass = p.onBye || p.isOut ? ' class="bye"' : '';
-          return '<tr><td>' + esc(p.slot) + '</td><td>' + esc(p.player) + '</td><td>' + weeklyText + '</td>'
-            + '<td>' + threeDText + '</td><td' + statusClass + '>' + statusText + '</td></tr>';
-        }).join('')
-        + (entry.benchTop
-          ? '<tr class="card-lineup-bench"><td>BENCH</td><td>' + esc(entry.benchTop.player) + '</td>'
-            + '<td>' + (entry.benchTop.weeklyProjection !== null ? entry.benchTop.weeklyProjection.toFixed(1) : '—') + '</td>'
-            + '<td>' + (entry.benchTop.threeDValue !== null ? entry.benchTop.threeDValue.toFixed(1) : '—') + '</td><td>top bench</td></tr>'
-          : '')
-        + '</tbody>';
-      card.appendChild(details);
+      const detailsWrap = document.createElement('div');
+      detailsWrap.innerHTML = lineupTableHTML(entry.breakdown, entry.benchTop);
+      card.appendChild(detailsWrap.firstChild);
 
       if (isLockedPick) {
         const footer = document.createElement('div');
@@ -380,6 +406,10 @@
       return esc(violation.team) + ' is scheduled ' + violation.weeks.length
         + ' times during weeks ' + state.settings.restrictedWindowStart + '–'
         + state.settings.restrictedWindowEnd + ' (weeks ' + violation.weeks.join(', ') + ') — must play each team exactly once in that window.';
+    }
+    if (violation.type === 'repeated-in-stretch') {
+      return esc(violation.team) + ' is scheduled ' + violation.weeks.length
+        + ' times in the same stretch of the season (weeks ' + violation.weeks.join(', ') + ') — must play each team at most once per stretch.';
     }
     return esc(violation.team) + ' is scheduled ' + violation.weeks.length
       + ' times this season (weeks ' + violation.weeks.join(', ') + '), over the max of '
@@ -456,9 +486,12 @@
       const threeD = info && info.threeDValue !== null && info.threeDValue !== undefined ? info.threeDValue.toFixed(1) : '';
       const matchedProjection = info ? projectionForWeek(info, state.currentWeek) : undefined;
       const weekly = (matchedProjection !== undefined && matchedProjection !== null) ? matchedProjection.toFixed(1) : '';
+      const opponent = info ? opponentForWeek(info, state.currentWeek) : undefined;
+      const opponentText = (opponent !== undefined && opponent !== null) ? opponent : (onBye ? 'BYE' : '—');
       return '<tr>'
         + '<td data-label="Slot">' + esc(p.lineupSlot) + '</td>'
         + '<td data-label="Player">' + esc(p.player) + '</td>'
+        + '<td data-label="Opp">' + esc(opponentText) + '</td>'
         + '<td data-label="Position">' + esc(p.position) + '</td>'
         + '<td data-label="3D Value">' + threeD + '</td>'
         + '<td data-label="Weekly Proj.">' + weekly + '</td>'
@@ -564,6 +597,8 @@
         weeklyProjectionWeek: row.weekly_projection_week,
         weeklyProjectionNext: row.weekly_projection_next,
         weeklyProjectionNextWeek: row.weekly_projection_next_week,
+        weeklyOpponent: row.weekly_opponent,
+        weeklyOpponentNext: row.weekly_opponent_next,
       };
     }
     return players;

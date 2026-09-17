@@ -70,9 +70,24 @@
     return undefined;
   }
 
+  // Same two-slot lookup as projectionForWeek, but for the player's game
+  // opponent that week (e.g. "@DAL", "BUF") -- pulled from the same Draft
+  // Sharks row as the projection, so it's only ever present for a week that
+  // slot actually covers.
+  function opponentForWeek(info, week) {
+    if (info.weeklyProjectionWeek === week) return info.weeklyOpponent || null;
+    if (info.weeklyProjectionNextWeek === week) return info.weeklyOpponentNext || null;
+    return undefined;
+  }
+
   function playerScore(playerName, draftSharksData, week, weekHasData) {
     const info = findPlayerInfo(playerName, draftSharksData);
-    if (!info) return { value: 0, hasData: false, onBye: false, injuryRisk: null, found: false, weeklyProjection: null, threeDValue: null };
+    if (!info) {
+      return {
+        value: 0, hasData: false, onBye: false, injuryRisk: null, found: false,
+        weeklyProjection: null, threeDValue: null, opponent: null,
+      };
+    }
 
     const hasWeekData = weekHasData !== undefined ? weekHasData : weekHasPublishedData(draftSharksData, week);
     const onBye = info.bye === week;
@@ -89,12 +104,13 @@
     } else {
       weeklyProjection = null;
     }
+    const opponent = opponentForWeek(info, week) || null;
 
     const base = weeklyProjection != null ? weeklyProjection : threeDValue;
     const hasData = onBye || base != null;
     const value = onBye ? 0 : base;
 
-    return { value, hasData, onBye, injuryRisk: info.injuryRisk, found: true, weeklyProjection, threeDValue };
+    return { value, hasData, onBye, injuryRisk: info.injuryRisk, found: true, weeklyProjection, threeDValue, opponent };
   }
 
   function isOutScore(score) {
@@ -128,7 +144,10 @@
         const candidate = bench.find((b) => !usedBench.has(b.player) && eligible.includes(b.position));
         if (candidate) {
           usedBench.add(candidate.player);
-          replacement = { player: candidate.player, value: candidate.value, weeklyProjection: candidate.weeklyProjection, threeDValue: candidate.threeDValue };
+          replacement = {
+            player: candidate.player, value: candidate.value, weeklyProjection: candidate.weeklyProjection,
+            threeDValue: candidate.threeDValue, opponent: candidate.opponent,
+          };
         }
       }
       return {
@@ -140,6 +159,7 @@
         injuryRisk: score.injuryRisk,
         weeklyProjection: score.weeklyProjection,
         threeDValue: score.threeDValue,
+        opponent: score.opponent,
         isOut: out,
         replacement,
       };
@@ -175,10 +195,11 @@
   global.eligiblePositionsForSlot = eligiblePositionsForSlot;
   global.weekHasPublishedData = weekHasPublishedData;
   global.projectionForWeek = projectionForWeek;
+  global.opponentForWeek = opponentForWeek;
   if (typeof module !== 'undefined') {
     module.exports = {
       playerScore, teamWeekBreakdown, teamBenchTopPlayer, teamWeekScore, findPlayerInfo,
-      eligiblePositionsForSlot, weekHasPublishedData, projectionForWeek,
+      eligiblePositionsForSlot, weekHasPublishedData, projectionForWeek, opponentForWeek,
     };
   }
 })(typeof window !== 'undefined' ? window : global);

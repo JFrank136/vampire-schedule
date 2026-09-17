@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   playerScore, teamWeekBreakdown, teamBenchTopPlayer, teamWeekScore,
-  findPlayerInfo, eligiblePositionsForSlot, weekHasPublishedData, projectionForWeek,
+  findPlayerInfo, eligiblePositionsForSlot, weekHasPublishedData, projectionForWeek, opponentForWeek,
 } = require('../src/scoring.js');
 
 // A "published" week (some player has weeklyProjectionWeek === 3) vs weeks
@@ -78,6 +78,29 @@ test('projectionForWeek distinguishes "no slot for this week" (undefined) from "
   const info = { weeklyProjection: null, weeklyProjectionWeek: 3, weeklyProjectionNext: null, weeklyProjectionNextWeek: null };
   assert.equal(projectionForWeek(info, 3), null);
   assert.equal(projectionForWeek(info, 4), undefined);
+});
+
+test('opponentForWeek mirrors projectionForWeek: matched slot, wrong week, or no opponent recorded', () => {
+  const info = {
+    weeklyProjectionWeek: 3, weeklyOpponent: '@DAL',
+    weeklyProjectionNextWeek: 4, weeklyOpponentNext: 'BUF',
+  };
+  assert.equal(opponentForWeek(info, 3), '@DAL');
+  assert.equal(opponentForWeek(info, 4), 'BUF');
+  assert.equal(opponentForWeek(info, 5), undefined); // no slot covers week 5 at all
+});
+
+test('playerScore surfaces the matched opponent for the viewed week', () => {
+  const draftsharks = {
+    'Two Slot Guy': {
+      bye: null, injuryRisk: 10, threeDValue: 50,
+      weeklyProjection: 12.3, weeklyProjectionWeek: 3, weeklyOpponent: '@DAL',
+      weeklyProjectionNext: 18.7, weeklyProjectionNextWeek: 4, weeklyOpponentNext: 'BUF',
+    },
+  };
+  assert.equal(playerScore('Two Slot Guy', draftsharks, 3).opponent, '@DAL');
+  assert.equal(playerScore('Two Slot Guy', draftsharks, 4).opponent, 'BUF');
+  assert.equal(playerScore('Two Slot Guy', draftsharks, 5).opponent, null);
 });
 
 test('scores a bye-week player as 0 regardless of whether the week is published', () => {

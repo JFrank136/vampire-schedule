@@ -29,8 +29,8 @@ const { parseCSV } = require('../src/csv-parser.js');
 const { normalizeName } = require('../src/name-matching.js');
 
 const SLOT_COLUMNS = {
-  current: { projection: 'weekly_projection', week: 'weekly_projection_week' },
-  next: { projection: 'weekly_projection_next', week: 'weekly_projection_next_week' },
+  current: { projection: 'weekly_projection', week: 'weekly_projection_week', opponent: 'weekly_opponent' },
+  next: { projection: 'weekly_projection_next', week: 'weekly_projection_next_week', opponent: 'weekly_opponent_next' },
 };
 
 async function main() {
@@ -74,38 +74,54 @@ async function main() {
   // most recent pull: a player missing from it (e.g. ruled out/inactive)
   // must not fall back to a stale row from an earlier pull.
   const latestPulledAt = weekRows.reduce((max, r) => (r.pulled_at > max ? r.pulled_at : max), '');
-  const latestByName = new Map();
-  for (const row of weekRows) {
-    if (row.pulled_at === latestPulledAt) {
-      latestByName.set(row.player_name, row);
-    }
+  const latestRows = weekRows.filter((r) => r.pulled_at === latestPulledAt);
+
+  // Two different real players can share an exact name (e.g. WR Justin
+  // Jefferson vs. LB Justin Jefferson) -- keep every candidate row per
+  // normalized name instead of collapsing to one, so a same-name collision
+  // doesn't silently overwrite the fantasy-relevant player's projection with
+  // an unrelated player's.
+  const rowsByNormalizedName = new Map();
+  for (const row of latestRows) {
+    const key = normalizeName(row.player_name);
+    if (!rowsByNormalizedName.has(key)) rowsByNormalizedName.set(key, []);
+    rowsByNormalizedName.get(key).push(row);
   }
 
   const supabase = createClient(url, serviceKey);
   const { data: playerValues, error: fetchError } = await supabase
     .from('vampire_player_values')
-    .select('player');
+    .select('player, position');
   if (fetchError) throw fetchError;
   if (!playerValues || playerValues.length === 0) {
     console.error('Refusing to update weekly_projection: vampire_player_values is empty. Run refresh-data.js first.');
     process.exit(1);
   }
 
-  const normalizedIndex = new Map();
-  for (const row of latestByName.values()) {
-    normalizedIndex.set(normalizeName(row.player_name), row);
-  }
-
   const matched = [];
   const unmatchedPlayers = [];
-  for (const { player } of playerValues) {
-    const row = normalizedIndex.get(normalizeName(player));
+  const ambiguousPlayers = [];
+  for (const { player, position } of playerValues) {
+    const candidates = rowsByNormalizedName.get(normalizeName(player)) || [];
+    let row = null;
+    if (candidates.length === 1) {
+      row = candidates[0];
+    } else if (candidates.length > 1) {
+      row = candidates.find((c) => c.position === position) || null;
+      if (!row) ambiguousPlayers.push(player);
+    }
     if (row) {
-      matched.push({ player, [columns.projection]: Number(row.projection), [columns.week]: week });
+      matched.push({
+        player,
+        [columns.projection]: Number(row.projection),
+        [columns.week]: week,
+        [columns.opponent]: row.opponent || null,
+      });
     } else {
-      // Not in this week's latest pull (e.g. ruled out/inactive) -- zero
-      // out rather than leaving a stale projection from an earlier pull.
-      matched.push({ player, [columns.projection]: 0, [columns.week]: week });
+      // Not in this week's latest pull (e.g. ruled out/inactive), or every
+      // same-name candidate's position disagreed with ours -- zero out
+      // rather than guessing or leaving a stale projection.
+      matched.push({ player, [columns.projection]: 0, [columns.week]: week, [columns.opponent]: null });
       unmatchedPlayers.push(player);
     }
   }
@@ -126,11 +142,19 @@ async function main() {
     console.log(`  Unmatched (${unmatchedPlayers.length}, likely bench/inactive players not in this week's rankings):`);
     console.log(`    ${unmatchedPlayers.slice(0, 15).join(', ')}${unmatchedPlayers.length > 15 ? ', ...' : ''}`);
   }
+  if (ambiguousPlayers.length > 0) {
+    console.log(`  Ambiguous name collisions with no position match, zeroed out (${ambiguousPlayers.length}):`);
+    console.log(`    ${ambiguousPlayers.join(', ')}`);
+  }
 
   for (const row of matched) {
     const { error } = await supabase
       .from('vampire_player_values')
-      .update({ [columns.projection]: row[columns.projection], [columns.week]: row[columns.week] })
+      .update({
+        [columns.projection]: row[columns.projection],
+        [columns.week]: row[columns.week],
+        [columns.opponent]: row[columns.opponent],
+      })
       .eq('player', row.player);
     if (error) throw error;
   }
