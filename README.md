@@ -138,9 +138,10 @@ browsing rosters) needs zero Claude/script involvement.
   most once" per season **stretch** (pre-window / restricted-window /
   post-window), not just within the restricted window — locking a team in
   weeks 1–4 now excludes them from the rest of weeks 1–4 too.
-- (2026-09-16) Weekly picker defaults to week 2 (was week 1) and the page
-  widens on desktop (≥1100px) to fit more cards per row; mobile layout is
-  unchanged.
+- (2026-09-16) Weekly picker defaults to a hardcoded starting week and the
+  page widens on desktop (≥1100px) to fit more cards per row; mobile layout
+  is unchanged. (See 2026-09-22 entry below — that default now advances
+  itself weekly instead of being a fixed number.)
 - (2026-09-21) No more fixed draft-time lineup assignment: `rosters.csv` is
   now just `team,player,position`, and every lineup shown anywhere (weekly
   picker cards, the Rosters tab) is picked fresh each week by projected
@@ -152,6 +153,17 @@ browsing rosters) needs zero Claude/script involvement.
   meeting cap, matchups locked in for good) no longer show an Unlock button.
   `vampire_settings.data_updated_at` is now stamped by both refresh scripts
   and shown on the page as "Data last updated."
+- (2026-09-22) The weekly picker's `currentWeek` default (`template.html`,
+  in the `state` object near the top of the injected script) no longer needs
+  a manual bump each week: `.github/workflows/bump-week.yml` runs every
+  Tuesday (11:00 UTC) via GitHub Actions, calls `scripts/bump-week.js` to
+  increment it by one (capped at `lastRegularSeasonWeek`), and pushes the
+  change to `main`, which triggers the existing `deploy.yml` the same as any
+  other push. Deliberately built as native GitHub Actions automation rather
+  than a Claude-scheduled task, so it keeps running independent of any
+  Claude session — same reasoning as `FantasyInSeasonPull`'s Windows Task
+  Scheduler job. Manual override still works the same way it always did: edit
+  `currentWeek` in `template.html` directly and push.
 
 ## Not yet built
 
