@@ -6,20 +6,16 @@
 
   const normalizedIndexCache = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
 
-  // Slots the roster CSV actually uses (see rosters.csv) -- FLEX is the only
-  // one eligible for more than one position.
-  const SLOT_POSITIONS = {
-    QB: ['QB'],
-    RB1: ['RB'],
-    RB2: ['RB'],
-    WR1: ['WR'],
-    WR2: ['WR'],
-    TE: ['TE'],
-    FLEX: ['RB', 'WR', 'TE'],
-  };
+  // How many starters each strict position needs, filled in this order
+  // before FLEX. QB gets exactly 1 slot (this is a 1-QB league); RB/WR get
+  // 2 each; TE gets 1. FLEX (below) is filled last from whatever RB/WR/TE
+  // is left over.
+  const STARTER_COUNTS = { QB: 1, RB: 2, WR: 2, TE: 1 };
+  const FLEX_ELIGIBLE = ['RB', 'WR', 'TE'];
 
   function eligiblePositionsForSlot(slot) {
-    return SLOT_POSITIONS[slot] || [slot];
+    if (slot === 'FLEX') return FLEX_ELIGIBLE;
+    return STARTER_COUNTS[slot] ? [slot] : [slot];
   }
 
   function buildNormalizedIndex(draftSharksData) {
@@ -117,74 +113,103 @@
     return score.onBye || (score.hasData && score.value === 0);
   }
 
-  // Bench players scored the same way starters are -- prefers this week's
-  // real weekly projection over the season-long 3D Value fallback, so a
-  // bench replacement suggestion reflects who's actually projected well
-  // *this week*, not just who was highly valued on draft day.
-  function scoredBench(teamPlayers, draftSharksData, week, hasWeekData) {
-    return teamPlayers
-      .filter((p) => !p.starter)
-      .map((p) => ({ player: p.player, position: p.position, ...playerScore(p.player, draftSharksData, week, hasWeekData) }));
+  // Sorts highest-value-first; a null/undefined value (no data at all, not
+  // even a 3D Value) sorts last rather than crashing the comparison.
+  function byValueDescending(a, b) {
+    const av = a.value == null ? -Infinity : a.value;
+    const bv = b.value == null ? -Infinity : b.value;
+    return bv - av;
+  }
+
+  // Builds this week's actual best lineup purely from projected value --
+  // there is no more fixed CSV lineup_slot/starter assignment (see
+  // docs/DATA.md). Every rostered player at a position is a candidate; the
+  // best STARTER_COUNTS[position] players fill that position's slots, then
+  // the single best remaining RB/WR/TE fills FLEX. A player who'd be forced
+  // into their own slot on a bye/out week only stays there if the roster has
+  // no healthy alternative at that position -- with one, they're bumped to
+  // the bench automatically.
+  function autoLineup(teamPlayers, draftSharksData, week) {
+    const hasWeekData = weekHasPublishedData(draftSharksData, week);
+    const scored = teamPlayers.map((p) => ({
+      player: p.player,
+      position: p.position,
+      ...playerScore(p.player, draftSharksData, week, hasWeekData),
+    }));
+
+    const used = new Set();
+    const starters = [];
+
+    for (const position of Object.keys(STARTER_COUNTS)) {
+      const pool = scored.filter((p) => p.position === position && !used.has(p.player)).sort(byValueDescending);
+      const count = STARTER_COUNTS[position];
+      pool.slice(0, count).forEach((p, i) => {
+        used.add(p.player);
+        starters.push({ ...p, slot: count > 1 ? position + (i + 1) : position });
+      });
+    }
+
+    const flexPool = scored.filter((p) => FLEX_ELIGIBLE.includes(p.position) && !used.has(p.player)).sort(byValueDescending);
+    if (flexPool[0]) {
+      used.add(flexPool[0].player);
+      starters.push({ ...flexPool[0], slot: 'FLEX' });
+    }
+
+    const bench = scored.filter((p) => !used.has(p.player));
+    return { starters, bench };
+  }
+
+  function toBreakdownRow(s) {
+    return {
+      player: s.player,
+      position: s.position,
+      slot: s.slot,
+      value: s.value,
+      hasData: s.hasData,
+      onBye: s.onBye,
+      injuryRisk: s.injuryRisk,
+      weeklyProjection: s.weeklyProjection,
+      threeDValue: s.threeDValue,
+      opponent: s.opponent,
+      isOut: isOutScore(s),
+    };
   }
 
   function teamWeekBreakdown(teamPlayers, draftSharksData, week) {
-    const hasWeekData = weekHasPublishedData(draftSharksData, week);
-    const starters = teamPlayers.filter((p) => p.starter);
-    const bench = scoredBench(teamPlayers, draftSharksData, week, hasWeekData)
-      .filter((b) => b.value != null)
-      .sort((a, b) => b.value - a.value);
-
-    const usedBench = new Set();
-    return starters.map((p) => {
-      const score = playerScore(p.player, draftSharksData, week, hasWeekData);
-      const out = isOutScore(score);
-      let replacement = null;
-      if (out) {
-        const eligible = eligiblePositionsForSlot(p.lineupSlot);
-        const candidate = bench.find((b) => !usedBench.has(b.player) && eligible.includes(b.position));
-        if (candidate) {
-          usedBench.add(candidate.player);
-          replacement = {
-            player: candidate.player, value: candidate.value, weeklyProjection: candidate.weeklyProjection,
-            threeDValue: candidate.threeDValue, opponent: candidate.opponent,
-          };
-        }
-      }
-      return {
-        player: p.player,
-        slot: p.lineupSlot,
-        value: score.value,
-        hasData: score.hasData,
-        onBye: score.onBye,
-        injuryRisk: score.injuryRisk,
-        weeklyProjection: score.weeklyProjection,
-        threeDValue: score.threeDValue,
-        opponent: score.opponent,
-        isOut: out,
-        replacement,
-      };
-    });
+    return autoLineup(teamPlayers, draftSharksData, week).starters.map(toBreakdownRow);
   }
 
   // The bench's best FLEX-eligible player (RB/WR/TE -- a backup QB isn't a
   // usable bench option in a 1-QB league), scored the same week-aware way as
   // starters -- shown alongside the lineup as "best available" context.
   function teamBenchTopPlayer(teamPlayers, draftSharksData, week) {
-    const hasWeekData = weekHasPublishedData(draftSharksData, week);
-    const flexEligible = eligiblePositionsForSlot('FLEX');
-    const bench = scoredBench(teamPlayers, draftSharksData, week, hasWeekData)
-      .filter((b) => flexEligible.includes(b.position) && b.value != null)
-      .sort((a, b) => b.value - a.value);
-    return bench[0] || null;
+    const { bench } = autoLineup(teamPlayers, draftSharksData, week);
+    const eligible = bench.filter((b) => FLEX_ELIGIBLE.includes(b.position) && b.value != null).sort(byValueDescending);
+    return eligible[0] || null;
   }
 
-  // An out starter with a bench replacement contributes the replacement's
-  // value, not their own 0 -- a realistic manager swaps them in, so the
-  // team's projected total (and the weakest-opponent ranking/margin built on
-  // it) should reflect that lineup, not count a guaranteed zero.
   function teamWeekScore(teamPlayers, draftSharksData, week) {
-    return teamWeekBreakdown(teamPlayers, draftSharksData, week)
-      .reduce((total, row) => total + ((row.replacement ? row.replacement.value : row.value) || 0), 0);
+    return autoLineup(teamPlayers, draftSharksData, week).starters
+      .reduce((total, s) => total + (s.value || 0), 0);
+  }
+
+  // Full roster view for the Rosters tab: starters in slot order (the order
+  // a lineup card is normally read in), and the bench sorted by 3D Value --
+  // the season-long draft-day number, not this week's projection, since the
+  // Rosters tab is meant for browsing depth, not this week's decision.
+  const SLOT_ORDER = ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'TE', 'FLEX'];
+  function scoredRoster(teamPlayers, draftSharksData, week) {
+    const { starters, bench } = autoLineup(teamPlayers, draftSharksData, week);
+    const orderedStarters = SLOT_ORDER
+      .map((slot) => starters.find((s) => s.slot === slot))
+      .filter(Boolean)
+      .map(toBreakdownRow);
+    const sortedBench = bench.slice().sort((a, b) => {
+      const av = a.threeDValue == null ? -Infinity : a.threeDValue;
+      const bv = b.threeDValue == null ? -Infinity : b.threeDValue;
+      return bv - av;
+    }).map(toBreakdownRow);
+    return { starters: orderedStarters, bench: sortedBench };
   }
 
   global.playerScore = playerScore;
@@ -196,10 +221,13 @@
   global.weekHasPublishedData = weekHasPublishedData;
   global.projectionForWeek = projectionForWeek;
   global.opponentForWeek = opponentForWeek;
+  global.autoLineup = autoLineup;
+  global.scoredRoster = scoredRoster;
   if (typeof module !== 'undefined') {
     module.exports = {
       playerScore, teamWeekBreakdown, teamBenchTopPlayer, teamWeekScore, findPlayerInfo,
       eligiblePositionsForSlot, weekHasPublishedData, projectionForWeek, opponentForWeek,
+      autoLineup, scoredRoster,
     };
   }
 })(typeof window !== 'undefined' ? window : global);

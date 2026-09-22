@@ -141,6 +141,17 @@ browsing rosters) needs zero Claude/script involvement.
 - (2026-09-16) Weekly picker defaults to week 2 (was week 1) and the page
   widens on desktop (≥1100px) to fit more cards per row; mobile layout is
   unchanged.
+- (2026-09-21) No more fixed draft-time lineup assignment: `rosters.csv` is
+  now just `team,player,position`, and every lineup shown anywhere (weekly
+  picker cards, the Rosters tab) is picked fresh each week by projected
+  value (`autoLineup`/`scoredRoster` in `src/scoring.js`) -- see
+  `docs/DATA.md`'s "Auto-picked lineup" section. The Rosters tab now shows a
+  `BENCH` divider between starters and bench, with the bench sorted by 3D
+  Value. An ineligible opponent is fully removed from the weekly picker
+  board instead of grayed out, and Ray/Sandusky (already at their season
+  meeting cap, matchups locked in for good) no longer show an Unlock button.
+  `vampire_settings.data_updated_at` is now stamped by both refresh scripts
+  and shown on the page as "Data last updated."
 
 ## Not yet built
 

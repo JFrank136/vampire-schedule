@@ -6,8 +6,6 @@ function buildRosterRows(rosters) {
         team,
         player: player.player,
         position: player.position,
-        lineup_slot: player.lineupSlot,
-        starter: player.starter,
       });
     }
   }

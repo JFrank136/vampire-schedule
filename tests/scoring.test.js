@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  playerScore, teamWeekBreakdown, teamBenchTopPlayer, teamWeekScore,
+  playerScore, teamWeekBreakdown, teamBenchTopPlayer, teamWeekScore, autoLineup, scoredRoster,
   findPlayerInfo, eligiblePositionsForSlot, weekHasPublishedData, projectionForWeek, opponentForWeek,
 } = require('../src/scoring.js');
 
@@ -15,12 +15,6 @@ const DRAFTSHARKS = {
   'Davante Adams': { bye: 5, injuryRisk: 10, threeDValue: 60, weeklyProjection: null, weeklyProjectionWeek: null },
   'Backup Runner': { bye: 9, injuryRisk: 5, threeDValue: 40, weeklyProjection: null, weeklyProjectionWeek: null },
 };
-
-const TEAM = [
-  { player: 'Bijan Robinson', position: 'RB', lineupSlot: 'RB1', starter: true },
-  { player: 'Drake London', position: 'WR', lineupSlot: 'WR1', starter: true },
-  { player: 'Davante Adams', position: 'WR', lineupSlot: 'BENCH', starter: false },
-];
 
 test('weekHasPublishedData is true only for a week at least one player has a weekly projection for', () => {
   assert.equal(weekHasPublishedData(DRAFTSHARKS, 3), true);
@@ -146,141 +140,161 @@ test('findPlayerInfo is exported for lookups outside of scoring (e.g. the roster
 
 test('eligiblePositionsForSlot maps FLEX to RB/WR/TE and other slots to their own position', () => {
   assert.deepEqual(eligiblePositionsForSlot('FLEX'), ['RB', 'WR', 'TE']);
-  assert.deepEqual(eligiblePositionsForSlot('RB1'), ['RB']);
+  assert.deepEqual(eligiblePositionsForSlot('RB1'), ['RB1']);
   assert.deepEqual(eligiblePositionsForSlot('QB'), ['QB']);
 });
 
-test('teamWeekBreakdown only includes starters', () => {
-  const breakdown = teamWeekBreakdown(TEAM, DRAFTSHARKS, 4); // unpublished week, avoids the excluded-player path
-  assert.equal(breakdown.length, 2);
-  assert.deepEqual(breakdown.map((row) => row.player), ['Bijan Robinson', 'Drake London']);
+// --- Auto-lineup: no more fixed CSV lineup_slot/starter -- every rostered
+// player is a candidate, and the lineup is picked fresh each week by value.
+
+const FULL_ROSTER = [
+  { player: 'Star QB', position: 'QB' },
+  { player: 'Bijan Robinson', position: 'RB' }, // 3D 90
+  { player: 'Ashton Jeanty', position: 'RB' }, // 3D 70
+  { player: 'Backup Runner', position: 'RB' }, // 3D 40 -- beats a WR for FLEX below
+  { player: 'Drake London', position: 'WR' }, // 3D 80, week-3 proj 24.5
+  { player: 'Davante Adams', position: 'WR' }, // 3D 60
+  { player: 'Star TE', position: 'TE' },
+];
+const FULL_DRAFTSHARKS = {
+  ...DRAFTSHARKS,
+  'Star QB': { bye: null, injuryRisk: null, threeDValue: 30, weeklyProjection: null, weeklyProjectionWeek: null },
+  'Star TE': { bye: null, injuryRisk: null, threeDValue: 20, weeklyProjection: null, weeklyProjectionWeek: null },
+};
+
+test('autoLineup fills 1 QB / 2 RB / 2 WR / 1 TE / 1 FLEX by highest value, position-locked slots first', () => {
+  const { starters } = autoLineup(FULL_ROSTER, FULL_DRAFTSHARKS, 4); // unpublished week -> 3D Value
+  const slots = Object.fromEntries(starters.map((p) => [p.slot, p.player]));
+  assert.equal(slots.QB, 'Star QB');
+  assert.equal(slots.RB1, 'Bijan Robinson');
+  assert.equal(slots.RB2, 'Ashton Jeanty');
+  assert.equal(slots.WR1, 'Drake London');
+  assert.equal(slots.WR2, 'Davante Adams');
+  assert.equal(slots.TE, 'Star TE');
+  assert.equal(slots.FLEX, 'Backup Runner'); // best remaining RB/WR/TE, not left on the bench
 });
 
-test('teamWeekScore sums starter values on an unpublished week (3D Value fallback)', () => {
-  const score = teamWeekScore(TEAM, DRAFTSHARKS, 4);
-  assert.equal(score, 90 + 80);
+test('teamWeekBreakdown returns the auto-picked starters, not a fixed roster assignment', () => {
+  const breakdown = teamWeekBreakdown(FULL_ROSTER, FULL_DRAFTSHARKS, 4);
+  assert.equal(breakdown.length, 7); // QB, RB1, RB2, WR1, WR2, TE, FLEX
+  assert.ok(breakdown.some((p) => p.player === 'Backup Runner' && p.slot === 'FLEX'));
 });
 
-test('teamWeekScore zeroes out a starter on bye', () => {
-  const score = teamWeekScore(TEAM, DRAFTSHARKS, 5);
-  assert.equal(score, 0 + 0);
+test('teamWeekScore sums the auto-picked starters\' values', () => {
+  const score = teamWeekScore(FULL_ROSTER, FULL_DRAFTSHARKS, 4);
+  assert.equal(score, 30 + 90 + 70 + 80 + 60 + 20 + 40);
 });
 
-test('teamWeekScore substitutes an out starter\'s bench replacement value instead of counting them as 0', () => {
+test('a bye-week player with a healthy alternative at the same position is auto-benched, not started at 0', () => {
   const draftsharks = {
-    'Bijan Robinson': { bye: null, injuryRisk: 12, threeDValue: 90, weeklyProjection: null, weeklyProjectionWeek: null }, // excluded from week 3
-    'Drake London': { bye: 5, injuryRisk: 8, threeDValue: 80, weeklyProjection: 24.5, weeklyProjectionWeek: 3 },
-    'Backup Runner': { bye: null, injuryRisk: 5, threeDValue: 22, weeklyProjection: 15.5, weeklyProjectionWeek: 3 },
+    'Star QB': { bye: null, injuryRisk: null, threeDValue: 30, weeklyProjection: null, weeklyProjectionWeek: null },
+    'Star RB': { bye: 5, injuryRisk: null, threeDValue: 90, weeklyProjection: null, weeklyProjectionWeek: null },
+    'Solid RB': { bye: null, injuryRisk: null, threeDValue: 70, weeklyProjection: null, weeklyProjectionWeek: null },
+    'Bench RB': { bye: null, injuryRisk: null, threeDValue: 40, weeklyProjection: null, weeklyProjectionWeek: null },
+    'WR One': { bye: null, injuryRisk: null, threeDValue: 60, weeklyProjection: null, weeklyProjectionWeek: null },
+    'WR Two': { bye: null, injuryRisk: null, threeDValue: 55, weeklyProjection: null, weeklyProjectionWeek: null },
+    'Bench WR': { bye: null, injuryRisk: null, threeDValue: 45, weeklyProjection: null, weeklyProjectionWeek: null }, // beats Star RB's 0 for FLEX
+    'Star TE': { bye: null, injuryRisk: null, threeDValue: 20, weeklyProjection: null, weeklyProjectionWeek: null },
   };
   const team = [
-    { player: 'Bijan Robinson', position: 'RB', lineupSlot: 'RB1', starter: true },
-    { player: 'Drake London', position: 'WR', lineupSlot: 'WR1', starter: true },
-    { player: 'Backup Runner', position: 'RB', lineupSlot: 'BENCH', starter: false },
+    { player: 'Star QB', position: 'QB' },
+    { player: 'Star RB', position: 'RB' },
+    { player: 'Solid RB', position: 'RB' },
+    { player: 'Bench RB', position: 'RB' },
+    { player: 'WR One', position: 'WR' },
+    { player: 'WR Two', position: 'WR' },
+    { player: 'Bench WR', position: 'WR' },
+    { player: 'Star TE', position: 'TE' },
   ];
-  const score = teamWeekScore(team, draftsharks, 3); // week 3 is published -> Bijan is excluded/out
-  assert.equal(score, 15.5 + 24.5); // Backup Runner's real week-3 number swapped in for Bijan's 0, plus London's
+  // Star RB's bye (week 5); Solid RB and Bench RB are healthy, so the 2 RB
+  // slots go to them, and Bench WR (a real FLEX option) beats Star RB's
+  // guaranteed 0 for the FLEX slot too -- Star RB is fully benched.
+  const breakdown = teamWeekBreakdown(team, draftsharks, 5);
+  const starterNames = breakdown.map((p) => p.player);
+  assert.ok(!starterNames.includes('Star RB'));
+  assert.ok(starterNames.includes('Solid RB'));
+  assert.ok(starterNames.includes('Bench RB'));
+  assert.ok(starterNames.includes('Bench WR'));
 });
 
-test('teamBenchTopPlayer picks the highest 3D Value bench player', () => {
-  const team = [
-    { player: 'Bijan Robinson', position: 'RB', lineupSlot: 'RB1', starter: true },
-    { player: 'Davante Adams', position: 'WR', lineupSlot: 'BENCH', starter: false },
-    { player: 'Backup Runner', position: 'RB', lineupSlot: 'BENCH', starter: false },
+test('a bye/out player is still started when the position has no healthy alternative', () => {
+  const team = [{ player: 'Bijan Robinson', position: 'RB' }, { player: 'Ashton Jeanty', position: 'RB' }];
+  const breakdown = teamWeekBreakdown(team, DRAFTSHARKS, 5); // both RB slots must be filled; Bijan's bye is week 5
+  const bijan = breakdown.find((p) => p.player === 'Bijan Robinson');
+  assert.equal(bijan.isOut, true);
+  assert.equal(bijan.value, 0);
+});
+
+test('teamBenchTopPlayer returns null when the roster is exactly the 7-man auto lineup with nobody left over', () => {
+  assert.equal(teamBenchTopPlayer(FULL_ROSTER, FULL_DRAFTSHARKS, 4), null);
+});
+
+test('teamBenchTopPlayer picks the highest-value FLEX-eligible player left off the auto lineup', () => {
+  // 3 FLEX-eligible extras: the best (Bench Hi) wins the FLEX slot itself,
+  // so the true bench is {Bench Mid, Bench Lo} -- the top player among
+  // *those*, not just the best of all 3, is what this should return.
+  const roster = [
+    { player: 'Star QB', position: 'QB' },
+    { player: 'RB A', position: 'RB' },
+    { player: 'RB B', position: 'RB' },
+    { player: 'WR A', position: 'WR' },
+    { player: 'WR B', position: 'WR' },
+    { player: 'Star TE', position: 'TE' },
+    { player: 'Bench Hi', position: 'WR' },
+    { player: 'Bench Mid', position: 'WR' },
+    { player: 'Bench Lo', position: 'WR' },
   ];
-  const top = teamBenchTopPlayer(team, DRAFTSHARKS, 4);
-  assert.equal(top.player, 'Davante Adams');
-  assert.equal(top.threeDValue, 60);
-});
-
-test('teamBenchTopPlayer returns null with no bench', () => {
-  assert.equal(teamBenchTopPlayer([{ player: 'Bijan Robinson', position: 'RB', lineupSlot: 'RB1', starter: true }], DRAFTSHARKS, 4), null);
-});
-
-test('teamBenchTopPlayer prefers a bench player\'s published weekly projection over a higher-3D-Value rival', () => {
   const draftsharks = {
-    'Bijan Robinson': { bye: 9, injuryRisk: 12, threeDValue: 90, weeklyProjection: null, weeklyProjectionWeek: null },
-    'High 3D Bench': { bye: 9, injuryRisk: 10, threeDValue: 60, weeklyProjection: null, weeklyProjectionWeek: null }, // excluded from week 3 -> scores 0
-    'Hot Weekly Bench': { bye: 9, injuryRisk: 10, threeDValue: 20, weeklyProjection: 18.5, weeklyProjectionWeek: 3 },
+    'Star QB': { bye: null, injuryRisk: null, threeDValue: 30, weeklyProjection: null, weeklyProjectionWeek: null },
+    'RB A': { bye: null, injuryRisk: null, threeDValue: 90, weeklyProjection: null, weeklyProjectionWeek: null },
+    'RB B': { bye: null, injuryRisk: null, threeDValue: 70, weeklyProjection: null, weeklyProjectionWeek: null },
+    'WR A': { bye: null, injuryRisk: null, threeDValue: 80, weeklyProjection: null, weeklyProjectionWeek: null },
+    'WR B': { bye: null, injuryRisk: null, threeDValue: 60, weeklyProjection: null, weeklyProjectionWeek: null },
+    'Star TE': { bye: null, injuryRisk: null, threeDValue: 20, weeklyProjection: null, weeklyProjectionWeek: null },
+    'Bench Hi': { bye: null, injuryRisk: null, threeDValue: 55, weeklyProjection: null, weeklyProjectionWeek: null },
+    'Bench Mid': { bye: null, injuryRisk: null, threeDValue: 35, weeklyProjection: null, weeklyProjectionWeek: null },
+    'Bench Lo': { bye: null, injuryRisk: null, threeDValue: 20, weeklyProjection: null, weeklyProjectionWeek: null },
   };
-  const team = [
-    { player: 'Bijan Robinson', position: 'RB', lineupSlot: 'RB1', starter: true },
-    { player: 'High 3D Bench', position: 'WR', lineupSlot: 'BENCH', starter: false },
-    { player: 'Hot Weekly Bench', position: 'WR', lineupSlot: 'BENCH', starter: false },
-  ];
-  const top = teamBenchTopPlayer(team, draftsharks, 3); // week 3 is published (Hot Weekly Bench has a number)
-  assert.equal(top.player, 'Hot Weekly Bench');
-  assert.equal(top.weeklyProjection, 18.5);
+  const benchTop = teamBenchTopPlayer(roster, draftsharks, 4);
+  assert.equal(benchTop.player, 'Bench Mid');
 });
 
-test('teamBenchTopPlayer excludes bench QBs even with the highest score -- only RB/WR/TE are usable as a flex', () => {
+test('teamBenchTopPlayer excludes bench QBs even with the highest value -- only RB/WR/TE are usable as a flex', () => {
   const draftsharks = {
-    'Bijan Robinson': { bye: 9, injuryRisk: 12, threeDValue: 90, weeklyProjection: null, weeklyProjectionWeek: null },
-    'Backup QB': { bye: 9, injuryRisk: 5, threeDValue: 95, weeklyProjection: null, weeklyProjectionWeek: null },
-    'Bench WR': { bye: 9, injuryRisk: 10, threeDValue: 30, weeklyProjection: null, weeklyProjectionWeek: null },
+    ...FULL_DRAFTSHARKS,
+    'Backup QB': { bye: null, injuryRisk: null, threeDValue: 95, weeklyProjection: null, weeklyProjectionWeek: null },
+    'Bench WR': { bye: null, injuryRisk: null, threeDValue: 10, weeklyProjection: null, weeklyProjectionWeek: null },
   };
-  const team = [
-    { player: 'Bijan Robinson', position: 'RB', lineupSlot: 'RB1', starter: true },
-    { player: 'Backup QB', position: 'QB', lineupSlot: 'BENCH', starter: false },
-    { player: 'Bench WR', position: 'WR', lineupSlot: 'BENCH', starter: false },
-  ];
-  const top = teamBenchTopPlayer(team, draftsharks, 4); // unpublished week -> falls back to 3D Value
+  const roster = [...FULL_ROSTER, { player: 'Backup QB', position: 'QB' }, { player: 'Bench WR', position: 'WR' }];
+  const top = teamBenchTopPlayer(roster, draftsharks, 4);
   assert.equal(top.player, 'Bench WR'); // not Backup QB, despite its higher 3D Value
 });
 
-test('a starter on bye is flagged out and matched to the best eligible bench replacement', () => {
-  const team = [
-    { player: 'Bijan Robinson', position: 'RB', lineupSlot: 'RB1', starter: true },
-    { player: 'Davante Adams', position: 'WR', lineupSlot: 'BENCH', starter: false },
-    { player: 'Backup Runner', position: 'RB', lineupSlot: 'BENCH', starter: false },
+test('scoredRoster orders starters by slot and sorts the bench by 3D Value', () => {
+  const roster = [
+    { player: 'Star QB', position: 'QB' },
+    { player: 'RB A', position: 'RB' },
+    { player: 'RB B', position: 'RB' },
+    { player: 'WR A', position: 'WR' },
+    { player: 'WR B', position: 'WR' },
+    { player: 'Star TE', position: 'TE' },
+    { player: 'Bench Hi', position: 'WR' }, // wins FLEX -- not on the bench
+    { player: 'Bench Mid', position: 'WR' },
+    { player: 'Bench Lo', position: 'WR' },
   ];
-  const breakdown = teamWeekBreakdown(team, DRAFTSHARKS, 5); // week 5 = Bijan's bye
-  const bijan = breakdown.find((row) => row.player === 'Bijan Robinson');
-  assert.equal(bijan.isOut, true);
-  assert.equal(bijan.replacement.player, 'Backup Runner'); // RB-eligible, not the higher-3D WR
-});
-
-test('a player missing from an unpublished week (not on bye) is not flagged out -- falls back to 3D Value', () => {
-  const team = [
-    { player: 'Ashton Jeanty', position: 'RB', lineupSlot: 'RB1', starter: true },
-    { player: 'Backup Runner', position: 'RB', lineupSlot: 'BENCH', starter: false },
-  ];
-  const breakdown = teamWeekBreakdown(team, DRAFTSHARKS, 4); // week 4 unpublished, not Jeanty's bye (9)
-  const jeanty = breakdown.find((row) => row.player === 'Ashton Jeanty');
-  assert.equal(jeanty.hasData, true); // falls back to 3D Value (70)
-  assert.equal(jeanty.value, 70);
-  assert.equal(jeanty.isOut, false);
-  assert.equal(jeanty.replacement, null);
-});
-
-test('a player missing from a published week (not on bye) IS flagged out -- Draft Sharks excluded them', () => {
-  const team = [
-    { player: 'Bijan Robinson', position: 'RB', lineupSlot: 'RB1', starter: true }, // no week-3 number
-    { player: 'Backup Runner', position: 'RB', lineupSlot: 'BENCH', starter: false },
-  ];
-  const breakdown = teamWeekBreakdown(team, DRAFTSHARKS, 3); // week 3 IS published (Drake London has it)
-  const bijan = breakdown.find((row) => row.player === 'Bijan Robinson');
-  assert.equal(bijan.value, 0);
-  assert.equal(bijan.isOut, true);
-  assert.equal(bijan.onBye, false);
-  assert.equal(bijan.replacement.player, 'Backup Runner');
-});
-
-test('does not suggest the same bench player as a replacement twice', () => {
   const draftsharks = {
-    'Bijan Robinson': { bye: 9, injuryRisk: 12, threeDValue: 90, weeklyProjection: null, weeklyProjectionWeek: null },
-    'Ashton Jeanty': { bye: 9, injuryRisk: 15, threeDValue: 70, weeklyProjection: null, weeklyProjectionWeek: null },
-    'Backup Runner': { bye: 1, injuryRisk: 5, threeDValue: 40, weeklyProjection: null, weeklyProjectionWeek: null },
+    'Star QB': { bye: null, injuryRisk: null, threeDValue: 30, weeklyProjection: null, weeklyProjectionWeek: null },
+    'RB A': { bye: null, injuryRisk: null, threeDValue: 90, weeklyProjection: null, weeklyProjectionWeek: null },
+    'RB B': { bye: null, injuryRisk: null, threeDValue: 70, weeklyProjection: null, weeklyProjectionWeek: null },
+    'WR A': { bye: null, injuryRisk: null, threeDValue: 80, weeklyProjection: null, weeklyProjectionWeek: null },
+    'WR B': { bye: null, injuryRisk: null, threeDValue: 60, weeklyProjection: null, weeklyProjectionWeek: null },
+    'Star TE': { bye: null, injuryRisk: null, threeDValue: 20, weeklyProjection: null, weeklyProjectionWeek: null },
+    'Bench Hi': { bye: null, injuryRisk: null, threeDValue: 55, weeklyProjection: null, weeklyProjectionWeek: null },
+    'Bench Mid': { bye: null, injuryRisk: null, threeDValue: 35, weeklyProjection: null, weeklyProjectionWeek: null },
+    'Bench Lo': { bye: null, injuryRisk: null, threeDValue: 20, weeklyProjection: null, weeklyProjectionWeek: null },
   };
-  const team = [
-    { player: 'Bijan Robinson', position: 'RB', lineupSlot: 'RB1', starter: true },
-    { player: 'Ashton Jeanty', position: 'RB', lineupSlot: 'RB2', starter: true },
-    { player: 'Backup Runner', position: 'RB', lineupSlot: 'BENCH', starter: false },
-  ];
-  const breakdown = teamWeekBreakdown(team, draftsharks, 9); // both RBs on bye week 9
-  const bijan = breakdown.find((row) => row.player === 'Bijan Robinson');
-  const jeanty = breakdown.find((row) => row.player === 'Ashton Jeanty');
-  assert.equal(bijan.isOut, true);
-  assert.equal(jeanty.isOut, true);
-  assert.equal(bijan.replacement.player, 'Backup Runner');
-  assert.equal(jeanty.replacement, null); // only one RB-eligible bench player available
+  const { starters, bench } = scoredRoster(roster, draftsharks, 4);
+  assert.deepEqual(starters.map((p) => p.slot), ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'TE', 'FLEX']);
+  assert.equal(starters.find((p) => p.slot === 'FLEX').player, 'Bench Hi');
+  assert.deepEqual(bench.map((p) => p.player), ['Bench Mid', 'Bench Lo']);
 });

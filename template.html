@@ -133,6 +133,13 @@
   th { color: var(--text-2); font-family: 'Oswald', sans-serif; font-weight: 500; text-transform: uppercase; font-size: 11px; letter-spacing: 0.04em; }
   tbody tr:hover { background: var(--surface-2); }
 
+  #roster-table .roster-divider td {
+    border-bottom: none; border-top: 2px solid var(--accent);
+    padding-top: 10px; font-family: 'Oswald', sans-serif; font-size: 10px;
+    font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-2);
+  }
+  #roster-table .roster-divider:hover { background: none; }
+
   .bye { color: var(--bad); font-size: 12px; }
   .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--bad-bg); color: var(--bad); font-weight: 500; }
 
@@ -160,7 +167,7 @@
     background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px;
   }
   .field { margin-bottom: 10px; display: flex; align-items: center; gap: 4px; }
-  p[id$="-status"] { font-size: 13px; color: var(--text-2); min-height: 1.2em; }
+  p[id$="-status"], #data-updated-at { font-size: 13px; color: var(--text-2); min-height: 1.2em; }
 
   #week-label { font-family: 'Oswald', sans-serif; font-size: 18px; letter-spacing: 0.03em; margin: 0 8px; }
   #week-prev, #week-next { padding: 6px 10px; }
@@ -196,6 +203,7 @@
     <button class="tab" data-tab="overview">Season overview</button>
   </div>
   <p id="sync-status"></p>
+  <p id="data-updated-at"></p>
 
   <div class="panel active" id="panel-picker">
     <div class="field">
@@ -240,6 +248,13 @@
 </script>
 <script>
 (function () {
+  // These two teams have already met their max meetings for the season with
+  // both matchups locked in for good (see vampire_schedule) -- Jared
+  // considers that history sealed, so the Unlock button is hidden for them
+  // rather than left available just because the general schedule rules
+  // wouldn't technically block re-opening it.
+  const PERMANENTLY_LOCKED_TEAMS = ['Ray', 'Sandusky'];
+
   const state = {
     rosters: {},
     draftsharks: {},
@@ -247,6 +262,7 @@
     scheduleWeeks: [],
     currentWeek: 2,
     rosterIndex: 0,
+    dataUpdatedAt: null,
     db: null,
   };
 
@@ -291,9 +307,6 @@
         let statusText = '';
         if (p.onBye) statusText = 'bye';
         else if (p.isOut) statusText = 'out';
-        if (p.isOut && p.replacement) {
-          statusText += ' → ' + esc(p.replacement.player);
-        }
         const statusClass = p.onBye || p.isOut ? ' class="bye"' : '';
         return '<tr><td>' + esc(p.slot) + '</td><td>' + esc(p.player) + '</td><td>' + oppText + '</td><td>' + weeklyText + '</td>'
           + '<td>' + threeDText + '</td><td' + statusClass + '>' + statusText + '</td></tr>';
@@ -342,8 +355,13 @@
     list.innerHTML = '';
     teams.forEach((entry, index) => {
       const isLockedPick = !!(currentEntry && currentEntry.locked && currentEntry.opponent === entry.team);
+      // An ineligible team is fully removed from the board, not just grayed
+      // out -- once a team is used up for this stretch/season, it's not a
+      // real option, so it shouldn't take up space. The exception is the
+      // team already locked in for the week being viewed.
+      if (entry.reason && !isLockedPick) return;
       const card = document.createElement('div');
-      card.className = 'card' + (entry.reason && !isLockedPick ? ' ineligible' : '') + (isLockedPick ? ' locked-in' : '');
+      card.className = 'card' + (isLockedPick ? ' locked-in' : '');
       const byePlayers = entry.breakdown.filter((p) => p.onBye).map((p) => p.player).join(', ');
       const injuryValues = entry.breakdown.filter((p) => p.injuryRisk !== null).map((p) => p.injuryRisk);
       const avgInjuryRisk = injuryValues.length
@@ -376,18 +394,15 @@
         strip.className = 'card-strip locked-in';
         strip.textContent = 'Locked in for week ' + state.currentWeek;
         card.appendChild(strip);
-      } else if (entry.reason) {
-        const strip = document.createElement('div');
-        strip.className = 'card-strip ineligible';
-        strip.textContent = entry.reason;
-        card.appendChild(strip);
       }
 
       const detailsWrap = document.createElement('div');
       detailsWrap.innerHTML = lineupTableHTML(entry.breakdown, entry.benchTop);
       card.appendChild(detailsWrap.firstChild);
 
-      if (isLockedPick) {
+      if (isLockedPick && PERMANENTLY_LOCKED_TEAMS.includes(entry.team)) {
+        // No footer at all -- these matchups are locked in for good.
+      } else if (isLockedPick) {
         const footer = document.createElement('div');
         footer.className = 'card-footer';
         const unlockButton = document.createElement('button');
@@ -462,10 +477,12 @@
         statusBadge.className = 'status-badge locked';
         statusBadge.textContent = 'locked';
         statusCell.appendChild(statusBadge);
-        const unlockButton = document.createElement('button');
-        unlockButton.textContent = 'Unlock';
-        unlockButton.addEventListener('click', () => unlockWeek(week));
-        statusCell.appendChild(unlockButton);
+        if (!PERMANENTLY_LOCKED_TEAMS.includes(entry.opponent)) {
+          const unlockButton = document.createElement('button');
+          unlockButton.textContent = 'Unlock';
+          unlockButton.addEventListener('click', () => unlockWeek(week));
+          statusCell.appendChild(unlockButton);
+        }
       } else if (entry.opponent) {
         const statusBadge = document.createElement('span');
         statusBadge.className = 'status-badge tentative';
@@ -486,6 +503,27 @@
     )).join('');
   }
 
+  // A roster row (starter or bench) is rendered the same way -- only the
+  // Slot column differs (a real slot name for starters, "BENCH" for the
+  // rest, which scoredRoster has already sorted by 3D Value).
+  function rosterRowHTML(row, slotLabel) {
+    const info = findPlayerInfo(row.player, state.draftsharks);
+    const byeWeek = info && info.bye !== null && info.bye !== undefined ? info.bye : null;
+    const onBye = byeWeek !== null && byeWeek === state.currentWeek;
+    const threeD = row.threeDValue !== null ? row.threeDValue.toFixed(1) : '';
+    const weekly = row.weeklyProjection !== null ? row.weeklyProjection.toFixed(1) : '';
+    const opponentText = row.opponent ? esc(row.opponent) : (onBye ? 'BYE' : '—');
+    return '<tr>'
+      + '<td data-label="Slot">' + esc(slotLabel) + '</td>'
+      + '<td data-label="Player">' + esc(row.player) + '</td>'
+      + '<td data-label="Opp">' + opponentText + '</td>'
+      + '<td data-label="Position">' + esc(row.position) + '</td>'
+      + '<td data-label="3D Value">' + threeD + '</td>'
+      + '<td data-label="Weekly Proj.">' + weekly + '</td>'
+      + '<td data-label="Bye"' + (onBye ? ' class="bye"' : '') + '>' + (byeWeek !== null ? byeWeek : '') + (onBye ? ' (this week)' : '') + '</td>'
+      + '</tr>';
+  }
+
   function renderRosters() {
     const teamNames = ['Me', ...nonVampireTeams()];
     if (state.rosterIndex >= teamNames.length) state.rosterIndex = 0;
@@ -493,26 +531,14 @@
     $('roster-team-label').textContent = team;
 
     const players = state.rosters[team] || [];
+    const { starters, bench } = scoredRoster(players, state.draftsharks, state.currentWeek);
     const tbody = document.querySelector('#roster-table tbody');
-    tbody.innerHTML = players.map((p) => {
-      const info = findPlayerInfo(p.player, state.draftsharks);
-      const byeWeek = info && info.bye !== null && info.bye !== undefined ? info.bye : null;
-      const onBye = byeWeek !== null && byeWeek === state.currentWeek;
-      const threeD = info && info.threeDValue !== null && info.threeDValue !== undefined ? info.threeDValue.toFixed(1) : '';
-      const matchedProjection = info ? projectionForWeek(info, state.currentWeek) : undefined;
-      const weekly = (matchedProjection !== undefined && matchedProjection !== null) ? matchedProjection.toFixed(1) : '';
-      const opponent = info ? opponentForWeek(info, state.currentWeek) : undefined;
-      const opponentText = (opponent !== undefined && opponent !== null) ? opponent : (onBye ? 'BYE' : '—');
-      return '<tr>'
-        + '<td data-label="Slot">' + esc(p.lineupSlot) + '</td>'
-        + '<td data-label="Player">' + esc(p.player) + '</td>'
-        + '<td data-label="Opp">' + esc(opponentText) + '</td>'
-        + '<td data-label="Position">' + esc(p.position) + '</td>'
-        + '<td data-label="3D Value">' + threeD + '</td>'
-        + '<td data-label="Weekly Proj.">' + weekly + '</td>'
-        + '<td data-label="Bye"' + (onBye ? ' class="bye"' : '') + '>' + (byeWeek !== null ? byeWeek : '') + (onBye ? ' (this week)' : '') + '</td>'
-        + '</tr>';
-    }).join('');
+    const starterRows = starters.map((row) => rosterRowHTML(row, row.slot)).join('');
+    const divider = bench.length
+      ? '<tr class="roster-divider"><td colspan="7">Bench</td></tr>'
+      : '';
+    const benchRows = bench.map((row) => rosterRowHTML(row, 'BENCH')).join('');
+    tbody.innerHTML = starterRows + divider + benchRows;
   }
 
   $('roster-prev').addEventListener('click', () => {
@@ -596,9 +622,7 @@
     const rosters = {};
     for (const row of rows) {
       if (!rosters[row.team]) rosters[row.team] = [];
-      rosters[row.team].push({
-        player: row.player, position: row.position, lineupSlot: row.lineup_slot, starter: row.starter,
-      });
+      rosters[row.team].push({ player: row.player, position: row.position });
     }
     return rosters;
   }
@@ -642,8 +666,19 @@
         restrictedWindowEnd: data.restricted_window_end,
         maxMeetingsPerOpponent: data.max_meetings_per_opponent,
       };
+      state.dataUpdatedAt = data.data_updated_at || null;
     }
     return error;
+  }
+
+  function renderDataUpdatedAt() {
+    const el = $('data-updated-at');
+    if (!el) return;
+    if (!state.dataUpdatedAt) { el.textContent = ''; return; }
+    const formatted = new Date(state.dataUpdatedAt).toLocaleString(undefined, {
+      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+    });
+    el.textContent = 'Data last updated: ' + formatted;
   }
   async function loadSchedule(supabase) {
     const { data, error } = await supabase.from('vampire_schedule').select('*').order('week');
@@ -669,6 +704,7 @@
     $('sync-status').textContent = errors.some(Boolean)
       ? 'Could not load the latest data — check your connection and reload.'
       : '';
+    renderDataUpdatedAt();
     renderPicker();
     renderRosters();
     renderOverview();

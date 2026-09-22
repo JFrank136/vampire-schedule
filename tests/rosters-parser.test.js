@@ -3,13 +3,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { parseRosters } = require('../src/rosters-parser.js');
 
-const SAMPLE = `team,player,position,lineup_slot,starter
-Me,Kyler Murray,QB,QB,1
-Me,Rachaad White,RB,RB1,1
-Ray,Jaxson Dart,QB,QB,1
-Ray,Davante Adams,WR,BENCH,0
-,,,,
-,,,,
+const SAMPLE = `team,player,position
+Me,Kyler Murray,QB
+Me,Rachaad White,RB
+Ray,Jaxson Dart,QB
+Ray,Davante Adams,WR
+,,
+,,
 `;
 
 test('groups players by team', () => {
@@ -19,15 +19,10 @@ test('groups players by team', () => {
   assert.equal(result.Ray.length, 2);
 });
 
-test('parses player fields with starter as a boolean', () => {
+test('parses player fields (position only -- no more lineup_slot/starter)', () => {
   const result = parseRosters(SAMPLE);
-  assert.deepEqual(result.Me[0], {
-    player: 'Kyler Murray',
-    position: 'QB',
-    lineupSlot: 'QB',
-    starter: true,
-  });
-  assert.equal(result.Ray[1].starter, false);
+  assert.deepEqual(result.Me[0], { player: 'Kyler Murray', position: 'QB' });
+  assert.deepEqual(result.Ray[1], { player: 'Davante Adams', position: 'WR' });
 });
 
 test('skips fully blank trailing rows', () => {

@@ -4,13 +4,13 @@ const { buildRosterRows, buildPlayerValueRows } = require('../scripts/build-rows
 
 test('buildRosterRows flattens the team->players map into flat rows', () => {
   const rosters = {
-    Me: [{ player: 'Kyler Murray', position: 'QB', lineupSlot: 'QB', starter: true }],
-    Ray: [{ player: 'Davante Adams', position: 'WR', lineupSlot: 'BENCH', starter: false }],
+    Me: [{ player: 'Kyler Murray', position: 'QB' }],
+    Ray: [{ player: 'Davante Adams', position: 'WR' }],
   };
   const rows = buildRosterRows(rosters);
   assert.deepEqual(rows, [
-    { team: 'Me', player: 'Kyler Murray', position: 'QB', lineup_slot: 'QB', starter: true },
-    { team: 'Ray', player: 'Davante Adams', position: 'WR', lineup_slot: 'BENCH', starter: false },
+    { team: 'Me', player: 'Kyler Murray', position: 'QB' },
+    { team: 'Ray', player: 'Davante Adams', position: 'WR' },
   ]);
 });
 

@@ -9,9 +9,12 @@ in `template.html`. RLS is off on all four `vampire_` tables — a deliberate
 call, not an oversight (low-stakes data, no-login model).
 
 - **`vampire_rosters`** — one row per rostered player. `team, player`
-  (composite PK), `position`, `lineup_slot`, `starter` (bool). `team` "Me" is
-  the Vampire; the other 9 are the league's other teams. Wiped and
-  re-inserted wholesale by `scripts/refresh-data.js`.
+  (composite PK), `position`. `team` "Me" is the Vampire; the other 9 are the
+  league's other teams. Wiped and re-inserted wholesale by
+  `scripts/refresh-data.js`. The table still has unused `lineup_slot`/
+  `starter` columns from before the app auto-picked lineups (see below) —
+  `refresh-data.js` no longer writes them (they default to `null`/`false`);
+  left in place rather than dropped since nothing depends on them either way.
 - **`vampire_player_values`** — one row per player. `player` (PK), `team`,
   `position`, `bye`, `injury_risk`, `three_d_value`, two rolling
   "current"/"next" weekly-projection slots: `weekly_projection` /
@@ -35,8 +38,12 @@ call, not an oversight (low-stakes data, no-login model).
 - **`vampire_settings`** — single row (`id boolean` PK, always `true`).
   `last_regular_season_week, restricted_window_start, restricted_window_end,
   max_meetings_per_opponent`. Currently `13, 5, 13, 2`. Not editable in-app —
-  change via direct SQL if a league rule changes; never touched by the
-  refresh script.
+  change via direct SQL if a league rule changes. Also holds
+  `data_updated_at` (added 2026-09-21), a timestamptz both
+  `refresh-data.js` and `refresh-weekly-projection.js` stamp with `now()` on
+  every successful run — the page reads it to show a "Data last updated"
+  line so a stale refresh is visible at a glance instead of silently showing
+  old numbers.
 - **`vampire_schedule`** — one row per week, `week int` PK. `opponent`
   (nullable text), `locked` (bool), `result`, `note` — the app no longer
   writes `result`/`note` (that UI was removed; Jared tracks those manually),
@@ -53,8 +60,13 @@ column gets renamed on either side.
 
 ## Source files (external to this repo)
 
-- `../rosters.csv` — ESPN-style export: `team,player,position,lineup_slot,starter`
-  (`starter` is `"1"`/`"0"`). Parsed by `src/rosters-parser.js`.
+- `../rosters.csv` — `team,player,position` only (as of 2026-09-21; the
+  `lineup_slot`/`starter` columns a draft-time export used to carry are gone
+  since the app now auto-picks the starting lineup itself every week -- see
+  "Auto-picked lineup" below). Parsed by `src/rosters-parser.js`. **After
+  editing this file, you must re-run `npm run refresh-data -- ...`** (see
+  `INSTRUCTIONS.md`) — editing it alone does nothing to the live page, which
+  only ever reads Supabase.
 - A DraftSharks rankings CSV — path varies by season/scrape, typically
   `Fantasy Football/Draft/data/raw/rankings-half-ppr.csv` (this league is
   0.5 PPR — use the half-ppr file, not full-PPR). Columns actually used:
@@ -133,6 +145,29 @@ hot-projected backup outranks a higher-draft-value one that's cold this
 week; `teamBenchTopPlayer` (the card's `BENCH`/`top bench` row) restricts
 this to FLEX-eligible positions only — a backup QB is never useful here in
 a 1-QB league.
+
+## Auto-picked lineup (`autoLineup` / `scoredRoster` in `src/scoring.js`)
+
+As of 2026-09-21, there is no more fixed CSV lineup assignment (the old
+`lineup_slot`/`starter` columns) -- every rostered player is a candidate, and
+`autoLineup(teamPlayers, draftSharksData, week)` computes that week's actual
+best lineup fresh, purely from projected value (`playerScore`, which already
+prefers a published weekly projection over the 3D Value fallback). It fills
+QB (1), RB (2), WR (2), TE (1) with each position's best-scoring players,
+then FLEX with the single best remaining RB/WR/TE. This subsumes the old
+bye/out-replacement logic: a player on bye or excluded from a published week
+scores 0, so they simply lose their spot to a better-scoring alternative
+automatically -- there's no separate "swap in a replacement" step anymore.
+They only still start if the position has no healthy alternative at all
+(e.g. both rostered RBs are on bye the same week).
+
+`teamWeekBreakdown`/`teamWeekScore`/`teamBenchTopPlayer` (the weekly picker's
+per-card lineup table, team total, and "top bench" row) all call
+`autoLineup` under the hood and keep their existing shapes. `scoredRoster`
+is separate, for the Rosters tab: it returns starters in slot order
+(`QB, RB1, RB2, WR1, WR2, TE, FLEX`) plus the bench sorted by **3D Value**
+(the season-long draft-day number, not this week's projection -- the Rosters
+tab is for browsing depth, not making this week's decision).
 
 ## Weekly opponent (`weekly_opponent` / `weekly_opponent_next`)
 

@@ -4,6 +4,9 @@
     ? require('./csv-parser.js').parseCSV
     : global.parseCSV;
 
+  // No more lineup_slot/starter columns -- which players start each week is
+  // now computed automatically from projected value (see src/scoring.js's
+  // autoLineup), not assigned once at draft time in the CSV.
   function parseRosters(text) {
     const records = parseCSV(text);
     const rosters = {};
@@ -12,12 +15,7 @@
       const player = (record.player || '').trim();
       if (!team || !player) continue;
       if (!rosters[team]) rosters[team] = [];
-      rosters[team].push({
-        player,
-        position: record.position,
-        lineupSlot: record.lineup_slot,
-        starter: record.starter === '1',
-      });
+      rosters[team].push({ player, position: record.position });
     }
     return rosters;
   }

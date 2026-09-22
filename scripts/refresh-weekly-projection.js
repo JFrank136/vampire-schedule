@@ -159,6 +159,12 @@ async function main() {
     if (error) throw error;
   }
 
+  const { error: timestampError } = await supabase
+    .from('vampire_settings')
+    .update({ data_updated_at: new Date().toISOString() })
+    .eq('id', true);
+  if (timestampError) throw timestampError;
+
   console.log(`Done. Updated ${columns.projection} for ${matched.length} players (week ${week}, ${scoring}, slot: ${slot}).`);
 }
 

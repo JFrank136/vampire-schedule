@@ -49,6 +49,12 @@ async function main() {
   const { error: insertValuesError } = await supabase.from('vampire_player_values').insert(playerValueRows);
   if (insertValuesError) throw insertValuesError;
 
+  const { error: timestampError } = await supabase
+    .from('vampire_settings')
+    .update({ data_updated_at: new Date().toISOString() })
+    .eq('id', true);
+  if (timestampError) throw timestampError;
+
   console.log('Done.');
 }
 
