@@ -296,7 +296,7 @@
   // bye/out status and bench replacement) rather than the opponent side
   // alone -- lets you eyeball your own lineup's matchups, not just the
   // aggregate score, when deciding who to play.
-  function lineupTableHTML(breakdown, benchTop) {
+  function lineupTableHTML(breakdown, benchTop, team) {
     return '<table class="card-lineup"><thead><tr><th>Slot</th><th>Player</th><th>Opp</th><th>Weekly Proj.</th><th>3D Value</th><th>Status</th></tr></thead>'
       + '<tbody>' + breakdown.map((p) => {
         const weeklyText = p.weeklyProjection !== null ? p.weeklyProjection.toFixed(1) : '—';
@@ -309,7 +309,12 @@
         if (p.onBye) statusText = 'bye';
         else if (p.isOut) statusText = 'out';
         const statusClass = p.onBye || p.isOut ? ' class="bye"' : '';
-        return '<tr><td>' + esc(p.slot) + '</td><td>' + esc(p.player) + '</td><td>' + oppText + '</td><td>' + weeklyText + '</td>'
+        // Clicking a row cycles it default -> good -> injury -> bad -> default
+        // (see toggleLineupFlag); the flag is keyed by week+team+player so it's
+        // specific to this week's matchup call, not a standing note on the player.
+        const flag = state.lineupFlags[lineupFlagKey(state.currentWeek, team, p.player)];
+        const rowClass = flag ? ' class="flag-' + flag + '"' : '';
+        return '<tr data-week="' + state.currentWeek + '" data-team="' + esc(team) + '" data-player="' + esc(p.player) + '"' + rowClass + '><td>' + esc(p.slot) + '</td><td>' + esc(p.player) + '</td><td>' + oppText + '</td><td>' + weeklyText + '</td>'
           + '<td>' + threeDText + '</td><td' + statusClass + '>' + statusText + '</td></tr>';
       }).join('')
       + (benchTop
@@ -338,7 +343,7 @@
       + '<div class="card-stats"><span class="card-score">' + myScore.toFixed(1) + '</span></div>'
       + '</div>'
       + (myByePlayers ? '<div class="card-strip bye"><strong>Bye:</strong> ' + esc(myByePlayers) + '</div>' : '')
-      + lineupTableHTML(myBreakdown, myBenchTop);
+      + lineupTableHTML(myBreakdown, myBenchTop, 'Me');
 
     const teams = nonVampireTeams().map((team) => {
       const players = state.rosters[team] || [];
@@ -398,7 +403,7 @@
       }
 
       const detailsWrap = document.createElement('div');
-      detailsWrap.innerHTML = lineupTableHTML(entry.breakdown, entry.benchTop);
+      detailsWrap.innerHTML = lineupTableHTML(entry.breakdown, entry.benchTop, entry.team);
       card.appendChild(detailsWrap.firstChild);
 
       if (isLockedPick && PERMANENTLY_LOCKED_TEAMS.includes(entry.team)) {
