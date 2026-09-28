@@ -151,8 +151,10 @@ Expected: one match, confirming the module's code was inlined.
 
 - [ ] **Step 3: Commit**
 
+Do not commit `dist/index.html` — `dist/` is gitignored and rebuilt automatically by `.github/workflows/deploy.yml` on every push to `main` (see `README.md`'s "How it's built" section). Only `build.js` itself is a real source change here.
+
 ```bash
-git add build.js dist/index.html
+git add build.js
 git commit -m "Inline lineup-flags module into the built page
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
@@ -296,7 +298,7 @@ Expected: `Built dist/index.html` with no errors. (No visible behavior change ye
 - [ ] **Step 5: Commit**
 
 ```bash
-git add template.html dist/index.html
+git add template.html
 git commit -m "Load and realtime-sync vampire_lineup_flags
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
@@ -410,7 +412,7 @@ Expected: `Built dist/index.html` with no errors.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add template.html dist/index.html
+git add template.html
 git commit -m "Render lineup-flag state on player rows
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
@@ -479,7 +481,7 @@ Expected: `Built dist/index.html` with no errors.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add template.html dist/index.html
+git add template.html
 git commit -m "Cycle and sync lineup flags on row click
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
@@ -520,7 +522,7 @@ Expected: `Built dist/index.html` with no errors.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add template.html dist/index.html
+git add template.html
 git commit -m "Style lineup-flag rows with the existing good/warn/bad tokens
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
