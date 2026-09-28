@@ -164,6 +164,13 @@ browsing rosters) needs zero Claude/script involvement.
   Claude session — same reasoning as `FantasyInSeasonPull`'s Windows Task
   Scheduler job. Manual override still works the same way it always did: edit
   `currentWeek` in `template.html` directly and push.
+- (2026-09-27) Weekly picker player rows are now clickable: clicking a row in
+  any lineup table (the "Me" card and every opponent card) cycles it through
+  default → green (good matchup) → yellow (injury concern) → red (bad
+  option) → default. Backed by a new `vampire_lineup_flags` Supabase table
+  (`src/lineup-flags.js` holds the pure cycling/keying logic, unit-tested;
+  `template.html` wires it up the same way `vampire_schedule` is loaded and
+  realtime-synced). See `docs/DATA.md` for the table shape.
 
 ## Not yet built
 
