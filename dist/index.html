@@ -1,0 +1,1319 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vampire Matchup Picker</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #f5f3ea;
+    --surface: #ffffff;
+    --surface-2: #ece5d3;
+    --border: #dbd2ba;
+    --text: #241c12;
+    --text-2: #6b5d45;
+    --accent: #2f5233;
+    --accent-ink: #ffffff;
+    --good: #3d7a45;
+    --good-bg: #e5f0e3;
+    --bad: #93412a;
+    --bad-bg: #f5e7de;
+    --warn: #9c6b1c;
+    --warn-bg: #f4ead4;
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17150f;
+      --surface: #221e15;
+      --surface-2: #2a2418;
+      --border: #3d3423;
+      --text: #f2eee3;
+      --text-2: #b8ad97;
+      --accent: #7fb885;
+      --accent-ink: #0f1c10;
+      --good: #8bc48f;
+      --good-bg: #223327;
+      --bad: #d99a80;
+      --bad-bg: #3a2820;
+      --warn: #e0b563;
+      --warn-bg: #362b17;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17150f;
+    --surface: #221e15;
+    --surface-2: #2a2418;
+    --border: #3d3423;
+    --text: #f2eee3;
+    --text-2: #b8ad97;
+    --accent: #7fb885;
+    --accent-ink: #0f1c10;
+    --good: #8bc48f;
+    --good-bg: #223327;
+    --bad: #d99a80;
+    --bad-bg: #3a2820;
+    --warn: #e0b563;
+    --warn-bg: #362b17;
+  }
+
+  * { box-sizing: border-box; }
+  @media (prefers-reduced-motion: no-preference) {
+    button, .tab, .card-lineup tbody tr, #roster-table tbody tr {
+      transition: border-color 150ms ease, color 150ms ease, background-color 150ms ease, opacity 150ms ease;
+    }
+    .card-grid .card { animation: fade-in 200ms ease; }
+  }
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+  body {
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 1.5rem 1.25rem 4rem;
+  }
+  @media (min-width: 1100px) {
+    /* Wide/desktop viewports get more room so the card grid can lay out
+       several matchup cards per row instead of stacking narrowly. Mobile
+       layout (the max-width:600px block below) is untouched. */
+    body { max-width: 1400px; }
+  }
+  h3, h4 { font-family: 'Oswald', 'IBM Plex Sans', sans-serif; font-weight: 500; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text); margin: 1.75rem 0 0.6rem; }
+  h3:first-child { margin-top: 0; }
+
+  .tabs { display: flex; gap: 4px; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border); }
+  .tab {
+    font-family: 'Oswald', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 10px 16px;
+    cursor: pointer;
+    border: none;
+    border-radius: 0;
+    background: none;
+    font-size: 13px;
+    color: var(--text-2);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .card.ineligible { opacity: 0.6; }
+  .card.locked-in { border-color: var(--good); }
+  .card-top { padding: 12px 14px 8px; }
+  .card-eyebrow { font-family: 'Oswald', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); margin-bottom: 2px; }
+  .card-name { font-family: 'Oswald', sans-serif; font-size: 17px; font-weight: 600; }
+  .card-stats { display: flex; align-items: baseline; justify-content: space-between; margin-top: 6px; }
+  .card-score { font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .card-margin { font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .card-margin.good { color: var(--good); }
+  .card-margin.bad { color: var(--bad); }
+  .card-strip { font-size: 12px; padding: 6px 14px; }
+  .card-strip.bye { background: var(--warn-bg); color: var(--warn); }
+  .card-strip.injury { background: var(--bad-bg); color: var(--bad); }
+  .card-strip.ineligible { background: var(--surface-2); color: var(--text-2); font-style: italic; }
+  .card-strip.locked-in { background: var(--good-bg); color: var(--good); font-weight: 500; }
+  .card-footer { padding: 10px 14px 12px; }
+  .card-footer button { width: 100%; }
+  .card-lineup { margin: 0 14px 10px; width: calc(100% - 28px); }
+  .card-lineup th, .card-lineup td { font-size: 12px; padding: 5px 6px; }
+  .card-lineup th { font-size: 10px; }
+  .card-lineup-bench td { color: var(--text-2); font-style: italic; border-top: 1px solid var(--border); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-2); font-family: 'Oswald', sans-serif; font-weight: 500; text-transform: uppercase; font-size: 11px; letter-spacing: 0.04em; }
+  tbody tr:hover { background: var(--surface-2); }
+
+  #roster-table .roster-divider td {
+    border-bottom: none; border-top: 2px solid var(--accent);
+    padding-top: 10px; font-family: 'Oswald', sans-serif; font-size: 10px;
+    font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-2);
+  }
+  #roster-table .roster-divider:hover { background: none; }
+
+  .bye { color: var(--bad); font-size: 12px; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--bad-bg); color: var(--bad); font-weight: 500; }
+
+  .status-badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 500; margin-right: 6px; }
+  .status-badge.locked { background: var(--good-bg); color: var(--good); }
+  .status-badge.tentative { background: var(--warn-bg); color: var(--warn); }
+
+  .rule-alert { background: var(--bad-bg); color: var(--bad); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 12px; font-size: 13px; }
+  .rule-alert ul { margin: 4px 0 0; padding-left: 18px; }
+
+  button {
+    cursor: pointer; padding: 9px 14px; min-height: 38px; font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; font-weight: 500;
+    background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius);
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button:active { opacity: 0.8; }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #generate-schedule, .btn-primary {
+    background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
+  }
+  #generate-schedule:hover, .btn-primary:hover { opacity: 0.9; color: var(--accent-ink); }
+
+  input[type=text], select {
+    font-family: 'IBM Plex Mono', monospace; font-size: 13px;
+    background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px;
+  }
+  .field { margin-bottom: 10px; display: flex; align-items: center; gap: 4px; }
+  p[id$="-status"], #data-updated-at { font-size: 13px; color: var(--text-2); min-height: 1.2em; }
+
+  #week-label { font-family: 'Oswald', sans-serif; font-size: 18px; letter-spacing: 0.03em; margin: 0 8px; }
+  #week-prev, #week-next { padding: 6px 10px; }
+  #window-badge:not(:empty) {
+    display: inline-block; margin-left: 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em;
+    background: var(--warn-bg); color: var(--warn); padding: 3px 9px; border-radius: 999px; font-family: 'IBM Plex Sans', sans-serif; font-weight: 500;
+  }
+  #own-score { background: var(--surface-2); margin-bottom: 1.25rem; }
+
+  @media (max-width: 600px) {
+    /* Drop Slot and Weekly Proj. columns to fit Player/Opp/Position/3D
+       Value/Bye as a real table with no horizontal scroll. Weekly Proj. is
+       dropped (not just hidden) since it's virtually always blank until
+       DraftSharks publishes weekly numbers — 3D Value is the number that
+       matters until then. Opp stays even on mobile since it's short (e.g.
+       "@DAL"). */
+    #roster-table th:nth-child(1), #roster-table td:nth-child(1),
+    #roster-table th:nth-child(6), #roster-table td:nth-child(6) { display: none; }
+    #roster-table th, #roster-table td { padding: 6px 4px; font-size: 12px; }
+    /* Comfortable tap targets on touch screens (44px is the standard
+       accessibility minimum) without bulking up the desktop layout. */
+    button { min-height: 44px; padding: 10px 16px; }
+    #week-prev, #week-next { padding: 10px 14px; }
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+<div id="app">
+  <div class="tabs">
+    <button class="tab active" data-tab="picker">Weekly picker</button>
+    <button class="tab" data-tab="rosters">Rosters</button>
+    <button class="tab" data-tab="overview">Season overview</button>
+  </div>
+  <p id="sync-status"></p>
+  <p id="data-updated-at"></p>
+
+  <div class="panel active" id="panel-picker">
+    <div class="field">
+      <button id="week-prev">&larr;</button>
+      <strong id="week-label">Week 1</strong>
+      <button id="week-next">&rarr;</button>
+      <span id="window-badge"></span>
+    </div>
+    <div id="own-score" class="card"></div>
+    <div id="opponent-list" class="card-grid"></div>
+  </div>
+
+  <div class="panel" id="panel-rosters">
+    <div class="field">
+      <button id="roster-prev">&larr;</button>
+      <strong id="roster-team-label">Me</strong>
+      <button id="roster-next">&rarr;</button>
+    </div>
+    <table id="roster-table">
+      <thead><tr><th>Slot</th><th>Player</th><th>Opp</th><th>Position</th><th>3D Value</th><th>Weekly Proj.</th><th>Bye</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="panel" id="panel-overview">
+    <button id="generate-schedule">Generate / refresh season schedule</button>
+    <div id="schedule-violations"></div>
+    <table id="overview-table">
+      <thead><tr><th>Week</th><th>Opponent</th><th>Status</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <h4>Meetings so far</h4>
+    <table id="meetings-table">
+      <thead><tr><th>Team</th><th>Times played</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+// matchup-tool/src/csv-parser.js
+(function (global) {
+  function parseCSV(text) {
+    const rows = [];
+    let row = [];
+    let field = '';
+    let inQuotes = false;
+    let i = 0;
+    const len = text.length;
+
+    function pushField() {
+      row.push(field);
+      field = '';
+    }
+    function pushRow() {
+      pushField();
+      rows.push(row);
+      row = [];
+    }
+
+    while (i < len) {
+      const char = text[i];
+      if (inQuotes) {
+        if (char === '"') {
+          if (text[i + 1] === '"') {
+            field += '"';
+            i += 2;
+            continue;
+          }
+          inQuotes = false;
+          i += 1;
+          continue;
+        }
+        field += char;
+        i += 1;
+        continue;
+      }
+      if (char === '"') {
+        inQuotes = true;
+        i += 1;
+        continue;
+      }
+      if (char === ',') {
+        pushField();
+        i += 1;
+        continue;
+      }
+      if (char === '\r') {
+        i += 1;
+        continue;
+      }
+      if (char === '\n') {
+        pushRow();
+        i += 1;
+        continue;
+      }
+      field += char;
+      i += 1;
+    }
+    if (field.length > 0 || row.length > 0) {
+      pushRow();
+    }
+
+    if (rows.length === 0) return [];
+    const headers = rows[0];
+    const records = [];
+    for (let r = 1; r < rows.length; r += 1) {
+      const values = rows[r];
+      if (values.length === 1 && values[0].trim() === '') continue;
+      const record = {};
+      for (let c = 0; c < headers.length; c += 1) {
+        record[headers[c]] = values[c] !== undefined ? values[c] : '';
+      }
+      records.push(record);
+    }
+    return records;
+  }
+
+  global.parseCSV = parseCSV;
+  if (typeof module !== 'undefined') module.exports = { parseCSV };
+})(typeof window !== 'undefined' ? window : global);
+
+// matchup-tool/src/rosters-parser.js
+(function (global) {
+  const parseCSV = typeof module !== 'undefined'
+    ? require('./csv-parser.js').parseCSV
+    : global.parseCSV;
+
+  // No more lineup_slot/starter columns -- which players start each week is
+  // now computed automatically from projected value (see src/scoring.js's
+  // autoLineup), not assigned once at draft time in the CSV.
+  function parseRosters(text) {
+    const records = parseCSV(text);
+    const rosters = {};
+    for (const record of records) {
+      const team = (record.team || '').trim();
+      const player = (record.player || '').trim();
+      if (!team || !player) continue;
+      if (!rosters[team]) rosters[team] = [];
+      rosters[team].push({ player, position: record.position });
+    }
+    return rosters;
+  }
+
+  global.parseRosters = parseRosters;
+  if (typeof module !== 'undefined') module.exports = { parseRosters };
+})(typeof window !== 'undefined' ? window : global);
+
+// matchup-tool/src/draftsharks-parser.js
+(function (global) {
+  const parseCSV = typeof module !== 'undefined'
+    ? require('./csv-parser.js').parseCSV
+    : global.parseCSV;
+
+  function toNumber(value) {
+    if (value === undefined || value === null) return null;
+    const cleaned = String(value).replace('%', '').trim();
+    if (cleaned === '') return null;
+    const num = Number(cleaned);
+    return Number.isNaN(num) ? null : num;
+  }
+
+  function parseDraftSharks(text) {
+    const records = parseCSV(text);
+    const players = {};
+    for (const record of records) {
+      const name = (record.Player || '').trim();
+      if (!name) continue;
+      players[name] = {
+        team: record.Team,
+        position: record['Fantasy Position'],
+        bye: toNumber(record.Bye),
+        injuryRisk: toNumber(record.InjuryRisk),
+        threeDValue: toNumber(record['3D Value']),
+        weeklyProjection: null,
+      };
+    }
+    return players;
+  }
+
+  global.parseDraftSharks = parseDraftSharks;
+  if (typeof module !== 'undefined') module.exports = { parseDraftSharks };
+})(typeof window !== 'undefined' ? window : global);
+
+// matchup-tool/src/name-matching.js
+(function (global) {
+  const SUFFIXES = new Set(['jr', 'sr', 'ii', 'iii', 'iv', 'v']);
+
+  // Sourced from Draft/data/aliases.csv (canonical_name column) — nicknames
+  // that don't reduce to the same string through suffix/punctuation
+  // stripping alone. Keyed and valued by their already-normalized form.
+  const ALIASES = {
+    'cam skattebo': 'cameron skattebo',
+    'cam ward': 'cameron ward',
+    'chig okonkwo': 'chigoziem okonkwo',
+    'chris brooks': 'christopher brooks',
+    'kenny gainwell': 'kenneth gainwell',
+    'tank dell': 'nathaniel dell',
+    'andy borregales': 'andres borregales',
+    'ken walker': 'kenneth walker',
+  };
+
+  function normalizeName(rawName) {
+    const cleaned = String(rawName == null ? '' : rawName)
+      .toLowerCase()
+      .trim()
+      .replace(/\./g, '')
+      .replace(/'/g, '')
+      .replace(/-/g, ' ');
+    const tokens = cleaned.split(/\s+/).filter((t) => t && !SUFFIXES.has(t));
+    const joined = tokens.join(' ');
+    return ALIASES[joined] || joined;
+  }
+
+  global.normalizeName = normalizeName;
+  if (typeof module !== 'undefined') module.exports = { normalizeName };
+})(typeof window !== 'undefined' ? window : global);
+
+// matchup-tool/src/scoring.js
+(function (global) {
+  const normalizeName = typeof module !== 'undefined'
+    ? require('./name-matching.js').normalizeName
+    : global.normalizeName;
+
+  const normalizedIndexCache = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+
+  // How many starters each strict position needs, filled in this order
+  // before FLEX. QB gets exactly 1 slot (this is a 1-QB league); RB/WR get
+  // 2 each; TE gets 1. FLEX (below) is filled last from whatever RB/WR/TE
+  // is left over.
+  const STARTER_COUNTS = { QB: 1, RB: 2, WR: 2, TE: 1 };
+  const FLEX_ELIGIBLE = ['RB', 'WR', 'TE'];
+
+  function eligiblePositionsForSlot(slot) {
+    if (slot === 'FLEX') return FLEX_ELIGIBLE;
+    return STARTER_COUNTS[slot] ? [slot] : [slot];
+  }
+
+  function buildNormalizedIndex(draftSharksData) {
+    const index = {};
+    for (const name of Object.keys(draftSharksData)) {
+      index[normalizeName(name)] = name;
+    }
+    return index;
+  }
+
+  function findPlayerInfo(playerName, draftSharksData) {
+    const exact = draftSharksData[playerName];
+    if (exact) return exact;
+
+    let index = normalizedIndexCache && normalizedIndexCache.get(draftSharksData);
+    if (!index) {
+      index = buildNormalizedIndex(draftSharksData);
+      if (normalizedIndexCache) normalizedIndexCache.set(draftSharksData, index);
+    }
+    const matchedName = index[normalizeName(playerName)];
+    return matchedName ? draftSharksData[matchedName] : undefined;
+  }
+
+  // Is `week` a week Draft Sharks actually published projections for, at
+  // all (i.e. at least one player in the pool has that week in either slot
+  // below)? Distinguishes "this player is missing because the week hasn't
+  // been pulled yet" (blank -- nobody has a number) from "this player is
+  // missing even though the week WAS pulled" (they were excluded -- Draft
+  // Sharks drops inactive/injured players from the list entirely instead of
+  // ranking them at 0, confirmed live on draftsharks.com/weekly-rankings/rb).
+  function weekHasPublishedData(draftSharksData, week) {
+    return Object.values(draftSharksData).some(
+      (info) => info.weeklyProjectionWeek === week || info.weeklyProjectionNextWeek === week
+    );
+  }
+
+  // Two rolling slots ("current" and "next") are kept pushed at once, per
+  // Jared: every available week's projection should stay visible until that
+  // week has actually passed, not just the single nearest one. Returns the
+  // matched projection for `week` (from whichever slot holds it, checked
+  // current-then-next since a scheduling hiccup could leave next stale after
+  // current has already rolled forward), or undefined if neither slot is for
+  // this week at all (as opposed to null, meaning the slot matched but Draft
+  // Sharks had no number for this player).
+  function projectionForWeek(info, week) {
+    if (info.weeklyProjectionWeek === week) return info.weeklyProjection != null ? info.weeklyProjection : null;
+    if (info.weeklyProjectionNextWeek === week) return info.weeklyProjectionNext != null ? info.weeklyProjectionNext : null;
+    return undefined;
+  }
+
+  // Same two-slot lookup as projectionForWeek, but for the player's game
+  // opponent that week (e.g. "@DAL", "BUF") -- pulled from the same Draft
+  // Sharks row as the projection, so it's only ever present for a week that
+  // slot actually covers.
+  function opponentForWeek(info, week) {
+    if (info.weeklyProjectionWeek === week) return info.weeklyOpponent || null;
+    if (info.weeklyProjectionNextWeek === week) return info.weeklyOpponentNext || null;
+    return undefined;
+  }
+
+  function playerScore(playerName, draftSharksData, week, weekHasData) {
+    const info = findPlayerInfo(playerName, draftSharksData);
+    if (!info) {
+      return {
+        value: 0, hasData: false, onBye: false, injuryRisk: null, found: false,
+        weeklyProjection: null, threeDValue: null, opponent: null,
+      };
+    }
+
+    const hasWeekData = weekHasData !== undefined ? weekHasData : weekHasPublishedData(draftSharksData, week);
+    const onBye = info.bye === week;
+    const threeDValue = info.threeDValue != null ? info.threeDValue : null;
+
+    const slotProjection = projectionForWeek(info, week);
+    let weeklyProjection;
+    if (slotProjection !== undefined && slotProjection != null) {
+      weeklyProjection = slotProjection;
+    } else if (!onBye && hasWeekData) {
+      // This week was published but this player isn't in it -- excluded
+      // (inactive/injured), which functionally means 0, not "unknown".
+      weeklyProjection = 0;
+    } else {
+      weeklyProjection = null;
+    }
+    const opponent = opponentForWeek(info, week) || null;
+
+    const base = weeklyProjection != null ? weeklyProjection : threeDValue;
+    const hasData = onBye || base != null;
+    const value = onBye ? 0 : base;
+
+    return { value, hasData, onBye, injuryRisk: info.injuryRisk, found: true, weeklyProjection, threeDValue, opponent };
+  }
+
+  function isOutScore(score) {
+    return score.onBye || (score.hasData && score.value === 0);
+  }
+
+  // Sorts highest-value-first; a null/undefined value (no data at all, not
+  // even a 3D Value) sorts last rather than crashing the comparison.
+  function byValueDescending(a, b) {
+    const av = a.value == null ? -Infinity : a.value;
+    const bv = b.value == null ? -Infinity : b.value;
+    return bv - av;
+  }
+
+  // Builds this week's actual best lineup purely from projected value --
+  // there is no more fixed CSV lineup_slot/starter assignment (see
+  // docs/DATA.md). Every rostered player at a position is a candidate; the
+  // best STARTER_COUNTS[position] players fill that position's slots, then
+  // the single best remaining RB/WR/TE fills FLEX. A player who'd be forced
+  // into their own slot on a bye/out week only stays there if the roster has
+  // no healthy alternative at that position -- with one, they're bumped to
+  // the bench automatically.
+  function autoLineup(teamPlayers, draftSharksData, week) {
+    const hasWeekData = weekHasPublishedData(draftSharksData, week);
+    const scored = teamPlayers.map((p) => ({
+      player: p.player,
+      position: p.position,
+      ...playerScore(p.player, draftSharksData, week, hasWeekData),
+    }));
+
+    const used = new Set();
+    const starters = [];
+
+    for (const position of Object.keys(STARTER_COUNTS)) {
+      const pool = scored.filter((p) => p.position === position && !used.has(p.player)).sort(byValueDescending);
+      const count = STARTER_COUNTS[position];
+      pool.slice(0, count).forEach((p, i) => {
+        used.add(p.player);
+        starters.push({ ...p, slot: count > 1 ? position + (i + 1) : position });
+      });
+    }
+
+    const flexPool = scored.filter((p) => FLEX_ELIGIBLE.includes(p.position) && !used.has(p.player)).sort(byValueDescending);
+    if (flexPool[0]) {
+      used.add(flexPool[0].player);
+      starters.push({ ...flexPool[0], slot: 'FLEX' });
+    }
+
+    const bench = scored.filter((p) => !used.has(p.player));
+    return { starters, bench };
+  }
+
+  function toBreakdownRow(s) {
+    return {
+      player: s.player,
+      position: s.position,
+      slot: s.slot,
+      value: s.value,
+      hasData: s.hasData,
+      onBye: s.onBye,
+      injuryRisk: s.injuryRisk,
+      weeklyProjection: s.weeklyProjection,
+      threeDValue: s.threeDValue,
+      opponent: s.opponent,
+      isOut: isOutScore(s),
+    };
+  }
+
+  function teamWeekBreakdown(teamPlayers, draftSharksData, week) {
+    return autoLineup(teamPlayers, draftSharksData, week).starters.map(toBreakdownRow);
+  }
+
+  // The bench's best FLEX-eligible player (RB/WR/TE -- a backup QB isn't a
+  // usable bench option in a 1-QB league), scored the same week-aware way as
+  // starters -- shown alongside the lineup as "best available" context.
+  function teamBenchTopPlayer(teamPlayers, draftSharksData, week) {
+    const { bench } = autoLineup(teamPlayers, draftSharksData, week);
+    const eligible = bench.filter((b) => FLEX_ELIGIBLE.includes(b.position) && b.value != null).sort(byValueDescending);
+    return eligible[0] || null;
+  }
+
+  function teamWeekScore(teamPlayers, draftSharksData, week) {
+    return autoLineup(teamPlayers, draftSharksData, week).starters
+      .reduce((total, s) => total + (s.value || 0), 0);
+  }
+
+  // Full roster view for the Rosters tab: starters in slot order (the order
+  // a lineup card is normally read in), and the bench sorted by 3D Value --
+  // the season-long draft-day number, not this week's projection, since the
+  // Rosters tab is meant for browsing depth, not this week's decision.
+  const SLOT_ORDER = ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'TE', 'FLEX'];
+  function scoredRoster(teamPlayers, draftSharksData, week) {
+    const { starters, bench } = autoLineup(teamPlayers, draftSharksData, week);
+    const orderedStarters = SLOT_ORDER
+      .map((slot) => starters.find((s) => s.slot === slot))
+      .filter(Boolean)
+      .map(toBreakdownRow);
+    const sortedBench = bench.slice().sort((a, b) => {
+      const av = a.threeDValue == null ? -Infinity : a.threeDValue;
+      const bv = b.threeDValue == null ? -Infinity : b.threeDValue;
+      return bv - av;
+    }).map(toBreakdownRow);
+    return { starters: orderedStarters, bench: sortedBench };
+  }
+
+  global.playerScore = playerScore;
+  global.teamWeekBreakdown = teamWeekBreakdown;
+  global.teamBenchTopPlayer = teamBenchTopPlayer;
+  global.teamWeekScore = teamWeekScore;
+  global.findPlayerInfo = findPlayerInfo;
+  global.eligiblePositionsForSlot = eligiblePositionsForSlot;
+  global.weekHasPublishedData = weekHasPublishedData;
+  global.projectionForWeek = projectionForWeek;
+  global.opponentForWeek = opponentForWeek;
+  global.autoLineup = autoLineup;
+  global.scoredRoster = scoredRoster;
+  if (typeof module !== 'undefined') {
+    module.exports = {
+      playerScore, teamWeekBreakdown, teamBenchTopPlayer, teamWeekScore, findPlayerInfo,
+      eligiblePositionsForSlot, weekHasPublishedData, projectionForWeek, opponentForWeek,
+      autoLineup, scoredRoster,
+    };
+  }
+})(typeof window !== 'undefined' ? window : global);
+
+// matchup-tool/src/rules.js
+(function (global) {
+  function meetingCounts(scheduleWeeks) {
+    const counts = {};
+    for (const week of scheduleWeeks) {
+      if (!week.locked || !week.opponent) continue;
+      counts[week.opponent] = (counts[week.opponent] || 0) + 1;
+    }
+    return counts;
+  }
+
+  function isRestrictedWeek(week, settings) {
+    return week >= settings.restrictedWindowStart && week <= settings.restrictedWindowEnd;
+  }
+
+  // The season splits into stretches around the restricted window: weeks
+  // before it, the window itself, and (if the season extends past it) weeks
+  // after. A team can be played at most once per stretch -- not just once
+  // inside the restricted window -- so locking someone in early weeks also
+  // takes them off the board for the rest of that same early stretch.
+  function seasonStretch(week, settings) {
+    if (week < settings.restrictedWindowStart) return 'pre';
+    if (week <= settings.restrictedWindowEnd) return 'window';
+    return 'post';
+  }
+
+  function ineligibilityReason(team, week, scheduleWeeks, settings) {
+    const counts = meetingCounts(scheduleWeeks);
+    const totalMeetings = counts[team] || 0;
+    if (totalMeetings >= settings.maxMeetingsPerOpponent) {
+      return 'already played the maximum number of times this season';
+    }
+    const stretch = seasonStretch(week, settings);
+    const metInStretch = scheduleWeeks.some((w) => (
+      w.locked
+      && w.opponent === team
+      && seasonStretch(w.week, settings) === stretch
+    ));
+    if (metInStretch) {
+      return stretch === 'window'
+        ? 'already played this team during the once-each window'
+        : 'already played this team this stretch of the season';
+    }
+    return null;
+  }
+
+  function isEligible(team, week, scheduleWeeks, settings) {
+    return ineligibilityReason(team, week, scheduleWeeks, settings) === null;
+  }
+
+  function findScheduleViolations(scheduleWeeks, settings) {
+    const weeksByTeam = {};
+    for (const w of scheduleWeeks) {
+      if (!w.opponent) continue;
+      if (!weeksByTeam[w.opponent]) weeksByTeam[w.opponent] = [];
+      weeksByTeam[w.opponent].push(w.week);
+    }
+
+    const violations = [];
+    for (const team of Object.keys(weeksByTeam)) {
+      const weeks = weeksByTeam[team].slice().sort((a, b) => a - b);
+      if (weeks.length > settings.maxMeetingsPerOpponent) {
+        violations.push({ type: 'max-meetings-exceeded', team, weeks });
+        continue;
+      }
+      const weeksInWindow = weeks.filter((week) => isRestrictedWeek(week, settings));
+      if (weeksInWindow.length > 1) {
+        violations.push({ type: 'repeated-in-window', team, weeks: weeksInWindow });
+        continue;
+      }
+      const stretches = {};
+      for (const week of weeks) {
+        const stretch = seasonStretch(week, settings);
+        if (stretch === 'window') continue; // already covered above
+        if (!stretches[stretch]) stretches[stretch] = [];
+        stretches[stretch].push(week);
+      }
+      for (const stretch of Object.keys(stretches)) {
+        if (stretches[stretch].length > 1) {
+          violations.push({ type: 'repeated-in-stretch', team, weeks: stretches[stretch] });
+        }
+      }
+    }
+    return violations;
+  }
+
+  global.meetingCounts = meetingCounts;
+  global.isRestrictedWeek = isRestrictedWeek;
+  global.seasonStretch = seasonStretch;
+  global.ineligibilityReason = ineligibilityReason;
+  global.isEligible = isEligible;
+  global.findScheduleViolations = findScheduleViolations;
+  if (typeof module !== 'undefined') {
+    module.exports = {
+      meetingCounts, isRestrictedWeek, seasonStretch, ineligibilityReason, isEligible, findScheduleViolations,
+    };
+  }
+})(typeof window !== 'undefined' ? window : global);
+
+// matchup-tool/src/schedule-generator.js
+(function (global) {
+  const isEligible = typeof module !== 'undefined'
+    ? require('./rules.js').isEligible
+    : global.isEligible;
+
+  function generateSeasonSchedule(teamNames, settings, existingSchedule) {
+    const existingByWeek = {};
+    (existingSchedule || []).forEach((w) => { existingByWeek[w.week] = w; });
+
+    const working = [];
+    const newlyGeneratedWeeks = new Set();
+    let cursor = 0;
+
+    for (let week = 1; week <= settings.lastRegularSeasonWeek; week += 1) {
+      const existing = existingByWeek[week];
+      if (existing && existing.locked) {
+        working.push({ ...existing });
+        continue;
+      }
+
+      let opponent = null;
+      for (let attempt = 0; attempt < teamNames.length; attempt += 1) {
+        const candidate = teamNames[(cursor + attempt) % teamNames.length];
+        if (isEligible(candidate, week, working, settings)) {
+          opponent = candidate;
+          cursor = (cursor + attempt + 1) % teamNames.length;
+          break;
+        }
+      }
+      // Marked locked here only so isEligible's scan (which counts locked
+      // meetings) sees this pick when evaluating later weeks in this same
+      // pass; flipped back to unlocked below since it's still tentative.
+      working.push({
+        week,
+        opponent,
+        locked: true,
+        result: null,
+        note: opponent ? '' : 'no eligible opponent found',
+      });
+      newlyGeneratedWeeks.add(week);
+    }
+
+    return working.map((w) => (
+      newlyGeneratedWeeks.has(w.week) ? { ...w, locked: false } : w
+    ));
+  }
+
+  global.generateSeasonSchedule = generateSeasonSchedule;
+  if (typeof module !== 'undefined') module.exports = { generateSeasonSchedule };
+})(typeof window !== 'undefined' ? window : global);
+
+// matchup-tool/src/lineup-flags.js
+(function (global) {
+  const LINEUP_FLAG_ORDER = ['good', 'injury', 'bad'];
+
+  function lineupFlagKey(week, team, player) {
+    return week + ':' + team + ':' + player;
+  }
+
+  // null/undefined (default, unflagged) -> 'good' -> 'injury' -> 'bad' -> null.
+  function nextLineupFlag(current) {
+    if (!current) return LINEUP_FLAG_ORDER[0];
+    const index = LINEUP_FLAG_ORDER.indexOf(current);
+    if (index === -1 || index === LINEUP_FLAG_ORDER.length - 1) return null;
+    return LINEUP_FLAG_ORDER[index + 1];
+  }
+
+  function rowsToLineupFlags(rows) {
+    const flags = {};
+    for (const row of rows) {
+      flags[lineupFlagKey(row.week, row.team, row.player)] = row.flag;
+    }
+    return flags;
+  }
+
+  global.lineupFlagKey = lineupFlagKey;
+  global.nextLineupFlag = nextLineupFlag;
+  global.rowsToLineupFlags = rowsToLineupFlags;
+  if (typeof module !== 'undefined') {
+    module.exports = { lineupFlagKey, nextLineupFlag, rowsToLineupFlags };
+  }
+})(typeof window !== 'undefined' ? window : global);
+
+</script>
+<script>
+(function () {
+  // These two teams have already met their max meetings for the season with
+  // both matchups locked in for good (see vampire_schedule) -- Jared
+  // considers that history sealed, so the Unlock button is hidden for them
+  // rather than left available just because the general schedule rules
+  // wouldn't technically block re-opening it.
+  const PERMANENTLY_LOCKED_TEAMS = ['Ray', 'Sandusky'];
+
+  const state = {
+    rosters: {},
+    draftsharks: {},
+    settings: { lastRegularSeasonWeek: 13, restrictedWindowStart: 5, restrictedWindowEnd: 13, maxMeetingsPerOpponent: 2 },
+    scheduleWeeks: [],
+    currentWeek: 3,
+    rosterIndex: 0,
+    dataUpdatedAt: null,
+    db: null,
+  };
+
+  function $(id) { return document.getElementById(id); }
+
+  function esc(str) {
+    return String(str == null ? '' : str).replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+  }
+
+  function switchTab(name) {
+    document.querySelectorAll('.tab').forEach((el) => el.classList.toggle('active', el.dataset.tab === name));
+    document.querySelectorAll('.panel').forEach((el) => el.classList.toggle('active', el.id === 'panel-' + name));
+    if (name === 'picker') renderPicker();
+    if (name === 'overview') renderOverview();
+    if (name === 'rosters') renderRosters();
+  }
+
+  document.querySelectorAll('.tab').forEach((el) => {
+    el.addEventListener('click', () => switchTab(el.dataset.tab));
+  });
+
+  function nonVampireTeams() {
+    return Object.keys(state.rosters).filter((t) => t !== 'Me');
+  }
+
+  // Shared by the "Me" card and every opponent card, so both show the same
+  // per-player matchup detail (slot, this week's projection, 3D Value,
+  // bye/out status and bench replacement) rather than the opponent side
+  // alone -- lets you eyeball your own lineup's matchups, not just the
+  // aggregate score, when deciding who to play.
+  function lineupTableHTML(breakdown, benchTop) {
+    return '<table class="card-lineup"><thead><tr><th>Slot</th><th>Player</th><th>Opp</th><th>Weekly Proj.</th><th>3D Value</th><th>Status</th></tr></thead>'
+      + '<tbody>' + breakdown.map((p) => {
+        const weeklyText = p.weeklyProjection !== null ? p.weeklyProjection.toFixed(1) : '—';
+        // 3D Value is a season-long draft-day number -- once a player is
+        // flagged out for the week, it's not relevant to this decision and
+        // showing it next to "out" reads as if that's what they'd score.
+        const threeDText = !p.isOut && p.threeDValue !== null ? p.threeDValue.toFixed(1) : '—';
+        const oppText = p.opponent ? esc(p.opponent) : '—';
+        let statusText = '';
+        if (p.onBye) statusText = 'bye';
+        else if (p.isOut) statusText = 'out';
+        const statusClass = p.onBye || p.isOut ? ' class="bye"' : '';
+        return '<tr><td>' + esc(p.slot) + '</td><td>' + esc(p.player) + '</td><td>' + oppText + '</td><td>' + weeklyText + '</td>'
+          + '<td>' + threeDText + '</td><td' + statusClass + '>' + statusText + '</td></tr>';
+      }).join('')
+      + (benchTop
+        ? '<tr class="card-lineup-bench"><td>BENCH</td><td>' + esc(benchTop.player) + '</td>'
+          + '<td>' + (benchTop.opponent ? esc(benchTop.opponent) : '—') + '</td>'
+          + '<td>' + (benchTop.weeklyProjection !== null ? benchTop.weeklyProjection.toFixed(1) : '—') + '</td>'
+          + '<td>' + (benchTop.threeDValue !== null ? benchTop.threeDValue.toFixed(1) : '—') + '</td><td>top bench</td></tr>'
+        : '')
+      + '</tbody></table>';
+  }
+
+  function renderPicker() {
+    $('week-label').textContent = 'Week ' + state.currentWeek;
+    $('window-badge').textContent = isRestrictedWeek(state.currentWeek, state.settings)
+      ? 'restricted window · once each'
+      : '';
+
+    const me = state.rosters.Me || [];
+    const myScore = teamWeekScore(me, state.draftsharks, state.currentWeek);
+    const myBreakdown = teamWeekBreakdown(me, state.draftsharks, state.currentWeek);
+    const myBenchTop = teamBenchTopPlayer(me, state.draftsharks, state.currentWeek);
+    const myByePlayers = myBreakdown.filter((p) => p.onBye).map((p) => p.player).join(', ');
+    $('own-score').innerHTML = '<div class="card-top">'
+      + '<div class="card-eyebrow">Your team</div>'
+      + '<div class="card-name">Me</div>'
+      + '<div class="card-stats"><span class="card-score">' + myScore.toFixed(1) + '</span></div>'
+      + '</div>'
+      + (myByePlayers ? '<div class="card-strip bye"><strong>Bye:</strong> ' + esc(myByePlayers) + '</div>' : '')
+      + lineupTableHTML(myBreakdown, myBenchTop);
+
+    const teams = nonVampireTeams().map((team) => {
+      const players = state.rosters[team] || [];
+      const score = teamWeekScore(players, state.draftsharks, state.currentWeek);
+      const breakdown = teamWeekBreakdown(players, state.draftsharks, state.currentWeek);
+      const benchTop = teamBenchTopPlayer(players, state.draftsharks, state.currentWeek);
+      const reason = ineligibilityReason(team, state.currentWeek, state.scheduleWeeks, state.settings);
+      return { team, score, breakdown, benchTop, reason };
+    }).sort((a, b) => a.score - b.score);
+
+    const topEligibleIndex = teams.findIndex((t) => !t.reason);
+    const currentEntry = state.scheduleWeeks.find((w) => w.week === state.currentWeek);
+
+    const list = $('opponent-list');
+    list.innerHTML = '';
+    teams.forEach((entry, index) => {
+      const isLockedPick = !!(currentEntry && currentEntry.locked && currentEntry.opponent === entry.team);
+      // An ineligible team is fully removed from the board, not just grayed
+      // out -- once a team is used up for this stretch/season, it's not a
+      // real option, so it shouldn't take up space. The exception is the
+      // team already locked in for the week being viewed.
+      if (entry.reason && !isLockedPick) return;
+      const card = document.createElement('div');
+      card.className = 'card' + (isLockedPick ? ' locked-in' : '');
+      const byePlayers = entry.breakdown.filter((p) => p.onBye).map((p) => p.player).join(', ');
+      const injuryValues = entry.breakdown.filter((p) => p.injuryRisk !== null).map((p) => p.injuryRisk);
+      const avgInjuryRisk = injuryValues.length
+        ? Math.round(injuryValues.reduce((sum, v) => sum + v, 0) / injuryValues.length)
+        : null;
+      const margin = (myScore - entry.score).toFixed(1);
+
+      const top = document.createElement('div');
+      top.className = 'card-top';
+      top.innerHTML = (index === topEligibleIndex && !entry.reason ? '<div class="card-eyebrow">Weakest opponent</div>' : '')
+        + '<div class="card-name">' + esc(entry.team) + '</div>'
+        + '<div class="card-stats"><span class="card-score">' + entry.score.toFixed(1) + '</span>'
+        + '<span class="card-margin ' + (margin >= 0 ? 'good' : 'bad') + '">' + (margin >= 0 ? '+' : '') + margin + '</span></div>';
+      card.appendChild(top);
+
+      if (byePlayers) {
+        const strip = document.createElement('div');
+        strip.className = 'card-strip bye';
+        strip.innerHTML = '<strong>Bye:</strong> ' + esc(byePlayers);
+        card.appendChild(strip);
+      }
+      if (avgInjuryRisk !== null && avgInjuryRisk >= 40 && !entry.reason) {
+        const strip = document.createElement('div');
+        strip.className = 'card-strip injury';
+        strip.textContent = 'Injury risk: ' + avgInjuryRisk + '%';
+        card.appendChild(strip);
+      }
+      if (isLockedPick) {
+        const strip = document.createElement('div');
+        strip.className = 'card-strip locked-in';
+        strip.textContent = 'Locked in for week ' + state.currentWeek;
+        card.appendChild(strip);
+      }
+
+      const detailsWrap = document.createElement('div');
+      detailsWrap.innerHTML = lineupTableHTML(entry.breakdown, entry.benchTop);
+      card.appendChild(detailsWrap.firstChild);
+
+      if (isLockedPick && PERMANENTLY_LOCKED_TEAMS.includes(entry.team)) {
+        // No footer at all -- these matchups are locked in for good.
+      } else if (isLockedPick) {
+        const footer = document.createElement('div');
+        footer.className = 'card-footer';
+        const unlockButton = document.createElement('button');
+        unlockButton.textContent = 'Unlock';
+        unlockButton.addEventListener('click', (event) => {
+          event.stopPropagation();
+          unlockWeek(state.currentWeek);
+        });
+        footer.appendChild(unlockButton);
+        card.appendChild(footer);
+      } else if (!entry.reason) {
+        const footer = document.createElement('div');
+        footer.className = 'card-footer';
+        const lockButton = document.createElement('button');
+        lockButton.className = 'btn-primary';
+        lockButton.textContent = 'Lock in ' + entry.team;
+        lockButton.addEventListener('click', (event) => {
+          event.stopPropagation();
+          lockWeek(state.currentWeek, entry.team);
+        });
+        footer.appendChild(lockButton);
+        card.appendChild(footer);
+      }
+
+      list.appendChild(card);
+    });
+  }
+
+  function violationMessage(violation) {
+    if (violation.type === 'repeated-in-window') {
+      return esc(violation.team) + ' is scheduled ' + violation.weeks.length
+        + ' times during weeks ' + state.settings.restrictedWindowStart + '–'
+        + state.settings.restrictedWindowEnd + ' (weeks ' + violation.weeks.join(', ') + ') — must play each team exactly once in that window.';
+    }
+    if (violation.type === 'repeated-in-stretch') {
+      return esc(violation.team) + ' is scheduled ' + violation.weeks.length
+        + ' times in the same stretch of the season (weeks ' + violation.weeks.join(', ') + ') — must play each team at most once per stretch.';
+    }
+    return esc(violation.team) + ' is scheduled ' + violation.weeks.length
+      + ' times this season (weeks ' + violation.weeks.join(', ') + '), over the max of '
+      + state.settings.maxMeetingsPerOpponent + '.';
+  }
+
+  function renderScheduleViolations() {
+    const container = $('schedule-violations');
+    const violations = findScheduleViolations(state.scheduleWeeks, state.settings);
+    if (violations.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+    container.innerHTML = '<div class="rule-alert"><strong>Schedule rule violation'
+      + (violations.length > 1 ? 's' : '') + ':</strong><ul>'
+      + violations.map((v) => '<li>' + violationMessage(v) + '</li>').join('')
+      + '</ul></div>';
+  }
+
+  function renderOverview() {
+    renderScheduleViolations();
+    const tbody = document.querySelector('#overview-table tbody');
+    tbody.innerHTML = '';
+    for (let week = 1; week <= state.settings.lastRegularSeasonWeek; week += 1) {
+      const entry = state.scheduleWeeks.find((w) => w.week === week) || { opponent: null, locked: false, result: null, note: '' };
+      const tr = document.createElement('tr');
+
+      const weekCell = document.createElement('td');
+      weekCell.textContent = week;
+      const opponentCell = document.createElement('td');
+      opponentCell.textContent = entry.opponent || '—';
+      const statusCell = document.createElement('td');
+      if (entry.locked) {
+        const statusBadge = document.createElement('span');
+        statusBadge.className = 'status-badge locked';
+        statusBadge.textContent = 'locked';
+        statusCell.appendChild(statusBadge);
+        if (!PERMANENTLY_LOCKED_TEAMS.includes(entry.opponent)) {
+          const unlockButton = document.createElement('button');
+          unlockButton.textContent = 'Unlock';
+          unlockButton.addEventListener('click', () => unlockWeek(week));
+          statusCell.appendChild(unlockButton);
+        }
+      } else if (entry.opponent) {
+        const statusBadge = document.createElement('span');
+        statusBadge.className = 'status-badge tentative';
+        statusBadge.textContent = 'tentative';
+        statusCell.appendChild(statusBadge);
+      }
+      tr.appendChild(weekCell);
+      tr.appendChild(opponentCell);
+      tr.appendChild(statusCell);
+
+      tbody.appendChild(tr);
+    }
+
+    const counts = meetingCounts(state.scheduleWeeks);
+    const meetingsBody = document.querySelector('#meetings-table tbody');
+    meetingsBody.innerHTML = nonVampireTeams().map((team) => (
+      '<tr><td>' + esc(team) + '</td><td>' + (counts[team] || 0) + '</td></tr>'
+    )).join('');
+  }
+
+  // A roster row (starter or bench) is rendered the same way -- only the
+  // Slot column differs (a real slot name for starters, "BENCH" for the
+  // rest, which scoredRoster has already sorted by 3D Value).
+  function rosterRowHTML(row, slotLabel) {
+    const info = findPlayerInfo(row.player, state.draftsharks);
+    const byeWeek = info && info.bye !== null && info.bye !== undefined ? info.bye : null;
+    const onBye = byeWeek !== null && byeWeek === state.currentWeek;
+    const threeD = row.threeDValue !== null ? row.threeDValue.toFixed(1) : '';
+    const weekly = row.weeklyProjection !== null ? row.weeklyProjection.toFixed(1) : '';
+    const opponentText = row.opponent ? esc(row.opponent) : (onBye ? 'BYE' : '—');
+    return '<tr>'
+      + '<td data-label="Slot">' + esc(slotLabel) + '</td>'
+      + '<td data-label="Player">' + esc(row.player) + '</td>'
+      + '<td data-label="Opp">' + opponentText + '</td>'
+      + '<td data-label="Position">' + esc(row.position) + '</td>'
+      + '<td data-label="3D Value">' + threeD + '</td>'
+      + '<td data-label="Weekly Proj.">' + weekly + '</td>'
+      + '<td data-label="Bye"' + (onBye ? ' class="bye"' : '') + '>' + (byeWeek !== null ? byeWeek : '') + (onBye ? ' (this week)' : '') + '</td>'
+      + '</tr>';
+  }
+
+  function renderRosters() {
+    const teamNames = ['Me', ...nonVampireTeams()];
+    if (state.rosterIndex >= teamNames.length) state.rosterIndex = 0;
+    const team = teamNames[state.rosterIndex];
+    $('roster-team-label').textContent = team;
+
+    const players = state.rosters[team] || [];
+    const { starters, bench } = scoredRoster(players, state.draftsharks, state.currentWeek);
+    const tbody = document.querySelector('#roster-table tbody');
+    const starterRows = starters.map((row) => rosterRowHTML(row, row.slot)).join('');
+    const divider = bench.length
+      ? '<tr class="roster-divider"><td colspan="7">Bench</td></tr>'
+      : '';
+    const benchRows = bench.map((row) => rosterRowHTML(row, 'BENCH')).join('');
+    tbody.innerHTML = starterRows + divider + benchRows;
+  }
+
+  $('roster-prev').addEventListener('click', () => {
+    const teamNames = ['Me', ...nonVampireTeams()];
+    state.rosterIndex = (state.rosterIndex - 1 + teamNames.length) % teamNames.length;
+    renderRosters();
+  });
+  $('roster-next').addEventListener('click', () => {
+    const teamNames = ['Me', ...nonVampireTeams()];
+    state.rosterIndex = (state.rosterIndex + 1) % teamNames.length;
+    renderRosters();
+  });
+
+  function lockWeek(week, opponent) {
+    const updated = { week, opponent, locked: true, result: null, note: '' };
+    const existingIndex = state.scheduleWeeks.findIndex((w) => w.week === week);
+    if (existingIndex >= 0) state.scheduleWeeks[existingIndex] = updated;
+    else state.scheduleWeeks.push(updated);
+    renderPicker();
+    if (state.db) {
+      state.db.from('vampire_schedule').upsert({ week, opponent, locked: true }).then(({ error }) => {
+        if (error) {
+          console.error('Failed to lock week ' + week, error);
+          $('sync-status').textContent = 'Failed to save — check your connection and try again.';
+        } else {
+          $('sync-status').textContent = '';
+        }
+      });
+    }
+  }
+
+  function unlockWeek(week) {
+    const index = state.scheduleWeeks.findIndex((w) => w.week === week);
+    if (index < 0) return;
+    state.scheduleWeeks[index] = { ...state.scheduleWeeks[index], locked: false };
+    renderPicker();
+    renderOverview();
+    if (state.db) {
+      state.db.from('vampire_schedule').upsert({ week, locked: false }).then(({ error }) => {
+        if (error) {
+          console.error('Failed to unlock week ' + week, error);
+          $('sync-status').textContent = 'Failed to save — check your connection and try again.';
+        } else {
+          $('sync-status').textContent = '';
+        }
+      });
+    }
+  }
+
+  $('week-prev').addEventListener('click', () => {
+    state.currentWeek = Math.max(1, state.currentWeek - 1);
+    renderPicker();
+  });
+  $('week-next').addEventListener('click', () => {
+    state.currentWeek = Math.min(state.settings.lastRegularSeasonWeek, state.currentWeek + 1);
+    renderPicker();
+  });
+
+  $('generate-schedule').addEventListener('click', async () => {
+    const teams = nonVampireTeams();
+    const generated = generateSeasonSchedule(teams, state.settings, state.scheduleWeeks);
+    state.scheduleWeeks = generated;
+    if (state.db) {
+      const { error } = await state.db.from('vampire_schedule').upsert(generated.map((entry) => ({
+        week: entry.week, opponent: entry.opponent, locked: entry.locked,
+      })));
+      if (error) {
+        console.error('Failed to save generated schedule', error);
+        $('sync-status').textContent = 'Failed to save — check your connection and try again.';
+      } else {
+        $('sync-status').textContent = '';
+      }
+    }
+    renderOverview();
+  });
+
+  const SUPABASE_URL = 'https://tdtchffawcmkvgrccjza.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_7T_APoP6DNIpgI5QOsaY0g_qs_uhsRs';
+
+  function rowsToRosters(rows) {
+    const rosters = {};
+    for (const row of rows) {
+      if (!rosters[row.team]) rosters[row.team] = [];
+      rosters[row.team].push({ player: row.player, position: row.position });
+    }
+    return rosters;
+  }
+
+  function rowsToPlayerValues(rows) {
+    const players = {};
+    for (const row of rows) {
+      players[row.player] = {
+        team: row.team, position: row.position, bye: row.bye,
+        injuryRisk: row.injury_risk, threeDValue: row.three_d_value, weeklyProjection: row.weekly_projection,
+        weeklyProjectionWeek: row.weekly_projection_week,
+        weeklyProjectionNext: row.weekly_projection_next,
+        weeklyProjectionNextWeek: row.weekly_projection_next_week,
+        weeklyOpponent: row.weekly_opponent,
+        weeklyOpponentNext: row.weekly_opponent_next,
+      };
+    }
+    return players;
+  }
+
+  function rowToScheduleWeek(row) {
+    return { week: row.week, opponent: row.opponent, locked: row.locked, result: row.result, note: row.note || '' };
+  }
+
+  async function loadRosters(supabase) {
+    const { data, error } = await supabase.from('vampire_rosters').select('*');
+    state.rosters = rowsToRosters(data || []);
+    return error;
+  }
+  async function loadPlayerValues(supabase) {
+    const { data, error } = await supabase.from('vampire_player_values').select('*');
+    state.draftsharks = rowsToPlayerValues(data || []);
+    return error;
+  }
+  async function loadSettings(supabase) {
+    const { data, error } = await supabase.from('vampire_settings').select('*').single();
+    if (data) {
+      state.settings = {
+        lastRegularSeasonWeek: data.last_regular_season_week,
+        restrictedWindowStart: data.restricted_window_start,
+        restrictedWindowEnd: data.restricted_window_end,
+        maxMeetingsPerOpponent: data.max_meetings_per_opponent,
+      };
+      state.dataUpdatedAt = data.data_updated_at || null;
+    }
+    return error;
+  }
+
+  function renderDataUpdatedAt() {
+    const el = $('data-updated-at');
+    if (!el) return;
+    if (!state.dataUpdatedAt) { el.textContent = ''; return; }
+    const formatted = new Date(state.dataUpdatedAt).toLocaleString(undefined, {
+      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+    });
+    el.textContent = 'Data last updated: ' + formatted;
+  }
+  async function loadSchedule(supabase) {
+    const { data, error } = await supabase.from('vampire_schedule').select('*').order('week');
+    state.scheduleWeeks = (data || []).map(rowToScheduleWeek);
+    return error;
+  }
+
+  async function init() {
+    if (typeof window.supabase === 'undefined') {
+      renderPicker();
+      renderOverview();
+      return;
+    }
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    state.db = supabase;
+
+    const errors = await Promise.all([
+      loadRosters(supabase),
+      loadPlayerValues(supabase),
+      loadSettings(supabase),
+      loadSchedule(supabase),
+    ]);
+    $('sync-status').textContent = errors.some(Boolean)
+      ? 'Could not load the latest data — check your connection and reload.'
+      : '';
+    renderDataUpdatedAt();
+    renderPicker();
+    renderRosters();
+    renderOverview();
+
+    supabase.channel('vampire_schedule_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vampire_schedule' }, async () => {
+        await loadSchedule(supabase);
+        renderPicker();
+        renderOverview();
+      })
+      .subscribe();
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

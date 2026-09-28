@@ -10,6 +10,7 @@ const SRC_ORDER = [
   'scoring.js',
   'rules.js',
   'schedule-generator.js',
+  'lineup-flags.js',
 ];
 
 function build() {
