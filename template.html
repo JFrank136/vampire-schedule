@@ -287,6 +287,14 @@
     el.addEventListener('click', () => switchTab(el.dataset.tab));
   });
 
+  // Delegated so it keeps working after renderPicker() replaces the cards'
+  // innerHTML on every week change / realtime update, without re-binding.
+  $('panel-picker').addEventListener('click', (event) => {
+    const row = event.target.closest('tr[data-player]');
+    if (!row) return;
+    toggleLineupFlag(Number(row.dataset.week), row.dataset.team, row.dataset.player);
+  });
+
   function nonVampireTeams() {
     return Object.keys(state.rosters).filter((t) => t !== 'Me');
   }
@@ -324,6 +332,26 @@
           + '<td>' + (benchTop.threeDValue !== null ? benchTop.threeDValue.toFixed(1) : '—') + '</td><td>top bench</td></tr>'
         : '')
       + '</tbody></table>';
+  }
+
+  function toggleLineupFlag(week, team, player) {
+    const key = lineupFlagKey(week, team, player);
+    const next = nextLineupFlag(state.lineupFlags[key]);
+    if (next) {
+      state.lineupFlags[key] = next;
+    } else {
+      delete state.lineupFlags[key];
+    }
+    renderPicker();
+    syncLineupFlag(week, team, player, next);
+  }
+
+  async function syncLineupFlag(week, team, player, flag) {
+    if (!state.db) return;
+    const { error } = flag
+      ? await state.db.from('vampire_lineup_flags').upsert({ week, team, player, flag })
+      : await state.db.from('vampire_lineup_flags').delete().eq('week', week).eq('team', team).eq('player', player);
+    $('sync-status').textContent = error ? 'Failed to save — check your connection and try again.' : '';
   }
 
   function renderPicker() {
