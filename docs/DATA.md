@@ -51,6 +51,13 @@ call, not an oversight (low-stakes data, no-login model).
   Written directly by the app (lock-in, schedule generator); the page also
   holds a realtime subscription on this table so simultaneous viewers see
   schedule changes live without reloading.
+- **`vampire_lineup_flags`** — one row per active flag. `week, team, player`
+  (composite PK), `flag` (`'good' | 'injury' | 'bad'`). Set by clicking a
+  player row in the Weekly picker's lineup tables (own card + every opponent
+  card); cycling back to the unflagged default deletes the row rather than
+  storing a fourth value, so the table only ever holds active flags. Same
+  realtime-subscription pattern as `vampire_schedule` so simultaneous
+  viewers see each other's flags live.
 
 The browser client code (`rowsToRosters`, `rowsToPlayerValues`,
 `rowToScheduleWeek` in `template.html`) converts `snake_case` Postgres
