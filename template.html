@@ -121,6 +121,10 @@
   .card-strip.injury { background: var(--bad-bg); color: var(--bad); }
   .card-strip.ineligible { background: var(--surface-2); color: var(--text-2); font-style: italic; }
   .card-strip.locked-in { background: var(--good-bg); color: var(--good); font-weight: 500; }
+  .card-lineup tbody tr[data-player] { cursor: pointer; }
+  .card-lineup tbody tr.flag-good { background: var(--good-bg); }
+  .card-lineup tbody tr.flag-injury { background: var(--warn-bg); }
+  .card-lineup tbody tr.flag-bad { background: var(--bad-bg); }
   .card-footer { padding: 10px 14px 12px; }
   .card-footer button { width: 100%; }
   .card-lineup { margin: 0 14px 10px; width: calc(100% - 28px); }
