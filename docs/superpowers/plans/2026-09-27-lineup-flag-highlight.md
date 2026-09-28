@@ -362,7 +362,7 @@ Replace with:
         // (see toggleLineupFlag); the flag is keyed by week+team+player so it's
         // specific to this week's matchup call, not a standing note on the player.
         const flag = state.lineupFlags[lineupFlagKey(state.currentWeek, team, p.player)];
-        const rowClass = flag ? ' class="flag-' + flag + '"' : '';
+        const rowClass = flag ? ' class="flag-' + esc(flag) + '"' : '';
         return '<tr data-week="' + state.currentWeek + '" data-team="' + esc(team) + '" data-player="' + esc(p.player) + '"' + rowClass + '><td>' + esc(p.slot) + '</td><td>' + esc(p.player) + '</td><td>' + oppText + '</td><td>' + weeklyText + '</td>'
           + '<td>' + threeDText + '</td><td' + statusClass + '>' + statusText + '</td></tr>';
       }).join('')
