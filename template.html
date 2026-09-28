@@ -263,6 +263,7 @@
     currentWeek: 3,
     rosterIndex: 0,
     dataUpdatedAt: null,
+    lineupFlags: {},
     db: null,
   };
 
@@ -686,6 +687,12 @@
     return error;
   }
 
+  async function loadLineupFlags(supabase) {
+    const { data, error } = await supabase.from('vampire_lineup_flags').select('*');
+    state.lineupFlags = rowsToLineupFlags(data || []);
+    return error;
+  }
+
   async function init() {
     if (typeof window.supabase === 'undefined') {
       renderPicker();
@@ -700,6 +707,7 @@
       loadPlayerValues(supabase),
       loadSettings(supabase),
       loadSchedule(supabase),
+      loadLineupFlags(supabase),
     ]);
     $('sync-status').textContent = errors.some(Boolean)
       ? 'Could not load the latest data — check your connection and reload.'
@@ -714,6 +722,13 @@
         await loadSchedule(supabase);
         renderPicker();
         renderOverview();
+      })
+      .subscribe();
+
+    supabase.channel('vampire_lineup_flags_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vampire_lineup_flags' }, async () => {
+        await loadLineupFlags(supabase);
+        renderPicker();
       })
       .subscribe();
   }
