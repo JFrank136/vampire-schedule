@@ -27,14 +27,12 @@ call, not an oversight (low-stakes data, no-login model).
   so every available week's projection stays visible until that week has
   actually passed — see below.
 
-  **Gotcha:** `scripts/refresh-data.js` deletes and reinserts this table
-  *wholesale* (draft-time roster/DraftSharks refresh), and its row-builder
-  (`build-rows.js`'s `buildPlayerValueRows`) never sets any of the four
-  weekly-projection columns — so running `refresh-data.js` mid-season
-  silently wipes all of them back to `null` for every player. Always re-run
-  `refresh-weekly-projection.js` for both the current and next week
-  immediately after any `refresh-data.js` run during the season, or the app
-  will show blank weekly numbers for everyone until that's caught.
+  **Refresh behavior (changed 2026-09-29):** `scripts/refresh-data.js`
+  *upserts* this table on `player` (dropping `weekly_projection` from the
+  payload so stored values are never overwritten) and deletes only players
+  no longer in the DraftSharks file. The weekly-projection/opponent columns
+  survive a roster refresh; they're owned by `refresh-weekly-projection.js`.
+  (Before this, the script wiped the table and blanked every projection.)
 - **`vampire_settings`** — single row (`id boolean` PK, always `true`).
   `last_regular_season_week, restricted_window_start, restricted_window_end,
   max_meetings_per_opponent`. Currently `13, 5, 13, 2`. Not editable in-app —
@@ -89,7 +87,7 @@ column gets renamed on either side.
 
 `node scripts/refresh-weekly-projection.js ../../in-season/data/processed/rankings_long.csv <week> [scoring] [slot]`
 (`scoring` defaults to `half-ppr`, matching this league; `slot` defaults to
-`current`, the only other value is `next`). Unlike `refresh-data.js`, this
+`current`, the only other value is `next`). Like `refresh-data.js` (since 2026-09-29), this
 **never wipes** `vampire_player_values` — it's a targeted
 `UPDATE ... SET weekly_projection[_next]` per matched player, using Draft
 Sharks' `weekly3dPts` ("3D Proj") for that week/scoring, matched onto
