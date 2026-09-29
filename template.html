@@ -259,12 +259,24 @@
   // wouldn't technically block re-opening it.
   const PERMANENTLY_LOCKED_TEAMS = ['Ray', 'Sandusky'];
 
+  // NFL weeks roll over on Tuesday (matches in-season/src/season_config.py:
+  // WEEK_1_TUESDAY needs a one-line update each season). Computed in the
+  // browser so the page switches weeks at local Tuesday midnight instead of
+  // waiting on a scheduled job.
+  function computeCurrentWeek(lastWeek) {
+    const week1Tuesday = new Date(2026, 8, 8);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const week = Math.floor(Math.round((today - week1Tuesday) / 86400000) / 7) + 1;
+    return Math.max(1, Math.min(week, lastWeek));
+  }
+
   const state = {
     rosters: {},
     draftsharks: {},
     settings: { lastRegularSeasonWeek: 13, restrictedWindowStart: 5, restrictedWindowEnd: 13, maxMeetingsPerOpponent: 2 },
     scheduleWeeks: [],
-    currentWeek: 4,
+    currentWeek: computeCurrentWeek(13),
     rosterIndex: 0,
     dataUpdatedAt: null,
     lineupFlags: {},

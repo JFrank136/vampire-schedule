@@ -43,11 +43,26 @@ async function main() {
   const { error: insertRostersError } = await supabase.from('vampire_rosters').insert(rosterRows);
   if (insertRostersError) throw insertRostersError;
 
-  console.log(`Replacing ${playerValueRows.length} player value rows...`);
-  const { error: deleteValuesError } = await supabase.from('vampire_player_values').delete().neq('player', '');
-  if (deleteValuesError) throw deleteValuesError;
-  const { error: insertValuesError } = await supabase.from('vampire_player_values').insert(playerValueRows);
-  if (insertValuesError) throw insertValuesError;
+  // Upsert instead of wipe-and-reload: weekly_projection*/weekly_opponent*
+  // columns are owned by refresh-weekly-projection.js and must survive a
+  // roster refresh. build-rows' weekly_projection: null is dropped so an
+  // upsert never overwrites the stored value.
+  console.log(`Upserting ${playerValueRows.length} player value rows...`);
+  const upsertRows = playerValueRows.map(({ weekly_projection, ...rest }) => rest);
+  const { error: upsertValuesError } = await supabase
+    .from('vampire_player_values')
+    .upsert(upsertRows, { onConflict: 'player' });
+  if (upsertValuesError) throw upsertValuesError;
+
+  const keep = new Set(playerValueRows.map((r) => r.player));
+  const { data: existing, error: existingError } = await supabase.from('vampire_player_values').select('player');
+  if (existingError) throw existingError;
+  const stale = existing.map((r) => r.player).filter((p) => !keep.has(p));
+  if (stale.length > 0) {
+    console.log(`Removing ${stale.length} players no longer in the DraftSharks file...`);
+    const { error: staleError } = await supabase.from('vampire_player_values').delete().in('player', stale);
+    if (staleError) throw staleError;
+  }
 
   const { error: timestampError } = await supabase
     .from('vampire_settings')

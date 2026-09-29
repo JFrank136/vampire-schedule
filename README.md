@@ -153,17 +153,13 @@ browsing rosters) needs zero Claude/script involvement.
   meeting cap, matchups locked in for good) no longer show an Unlock button.
   `vampire_settings.data_updated_at` is now stamped by both refresh scripts
   and shown on the page as "Data last updated."
-- (2026-09-22) The weekly picker's `currentWeek` default (`template.html`,
-  in the `state` object near the top of the injected script) no longer needs
-  a manual bump each week: `.github/workflows/bump-week.yml` runs every
-  Tuesday (11:00 UTC) via GitHub Actions, calls `scripts/bump-week.js` to
-  increment it by one (capped at `lastRegularSeasonWeek`), and pushes the
-  change to `main`, which triggers the existing `deploy.yml` the same as any
-  other push. Deliberately built as native GitHub Actions automation rather
-  than a Claude-scheduled task, so it keeps running independent of any
-  Claude session — same reasoning as `FantasyInSeasonPull`'s Windows Task
-  Scheduler job. Manual override still works the same way it always did: edit
-  `currentWeek` in `template.html` directly and push.
+- (2026-09-29) The weekly picker's `currentWeek` is now computed in the
+  browser from today's date (`computeCurrentWeek` in `template.html`, Tuesday
+  rollover, anchored to Week 1's Tuesday 2026-09-08 -- same anchor as
+  `in-season/src/season_config.py`). This replaces the 2026-09-22 GitHub
+  Actions bump workflow, which ran ~1h45m late on 2026-09-29 (GitHub cron
+  delay) so the page still showed Week 3 that morning. Next season: update
+  the date in `computeCurrentWeek`.
 - (2026-09-27) Weekly picker player rows are now clickable: clicking a row in
   any lineup table (the "Me" card and every opponent card) cycles it through
   default → green (good matchup) → yellow (injury concern) → red (bad
