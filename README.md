@@ -88,7 +88,12 @@ browsing rosters) needs zero Claude/script involvement.
 - Weekly picker: card-grid layout, every opponent's full lineup visible by
   default (no click-to-expand), bye/injury-risk info always shown, fuzzy
   player-name matching against DraftSharks data.
-- Rosters tab: browse any team's full lineup, one team at a time.
+- Rosters tab: browse any team's full lineup, one team at a time. Below each
+  roster, a weekly viewer (current week through 15) shows that team's lineup
+  totals per week, best/worst weeks, expandable lineups, and a top-3-by-3D-value
+  steal-target picker that hides that player's bye week.
+- Free agents tab: what-if scratchpad for add/drop and lineup edits (browser-only,
+  never written back). See the 2026-09-29 note below.
 - Season overview: week table + meeting tally, plus a rule-violation banner
   (`findScheduleViolations` in `src/rules.js`) that flags any team scheduled
   twice in the weeks 5–13 window or more than the season max. Result/note
@@ -167,6 +172,14 @@ browsing rosters) needs zero Claude/script involvement.
   (`src/lineup-flags.js` holds the pure cycling/keying logic, unit-tested;
   `template.html` wires it up the same way `vampire_schedule` is loaded and
   realtime-synced). See `docs/DATA.md` for the table shape.
+- (2026-09-29) Weekly viewer + Free agents tab. Logic: `src/weekly-viewer.js`
+  (lineups ranked by 3D value only, scored with DraftSharks floor/proj/ceiling) and
+  `src/free-agents.js` (what-if roster, lineup swap rules, FLEX table rows), both
+  unit-tested. New tables `vampire_weekly_projections` (all weeks) and
+  `vampire_ros_projections`, filled by `npm run refresh-weekly-all` /
+  `npm run refresh-ros` (both also run from the daily `scheduled_pull.ps1`). Free
+  agents come from a `Free Agents` team in `rosters.csv`, excluded from all
+  opponent lists. Design/plans: `docs/superpowers/specs|plans/2026-09-29-*`.
 
 ## Not yet built
 
