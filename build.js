@@ -8,6 +8,7 @@ const SRC_ORDER = [
   'draftsharks-parser.js',
   'name-matching.js',
   'scoring.js',
+  'weekly-viewer.js',
   'rules.js',
   'schedule-generator.js',
   'lineup-flags.js',
