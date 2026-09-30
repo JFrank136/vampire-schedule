@@ -128,6 +128,20 @@
   .card-footer { padding: 10px 14px 12px; }
   .card-footer button { width: 100%; }
   .card-lineup { margin: 0 14px 10px; width: calc(100% - 28px); }
+  #weekly-viewer { margin-top: 2rem; }
+  #weekly-viewer h3 { font-family: 'Oswald', sans-serif; font-size: 14px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 4px; }
+  .weekly-note { color: var(--text-2); font-size: 12px; margin: 4px 0 10px; }
+  .weekly-row { cursor: pointer; }
+  .weekly-row.week-best td { background: var(--good-bg); }
+  .weekly-row.week-worst td { background: var(--bad-bg); }
+  .weekly-detail td { padding: 0 0 10px 0; border-bottom: 1px solid var(--border); }
+  .weekly-detail table { margin: 0; }
+  .week-tag { font-size: 11px; font-weight: 500; }
+  .week-best .week-tag { color: var(--good); }
+  .week-worst .week-tag { color: var(--bad); }
+  .steal-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
+  .steal-chip { font-size: 12px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+  .steal-chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
   .card-lineup th, .card-lineup td { font-size: 12px; padding: 5px 6px; }
   .card-lineup th { font-size: 10px; }
   .card-lineup-bench td { color: var(--text-2); font-style: italic; border-top: 1px solid var(--border); }
@@ -230,6 +244,7 @@
       <thead><tr><th>Slot</th><th>Player</th><th>Opp</th><th>Position</th><th>3D Value</th><th>Weekly Proj.</th><th>Bye</th></tr></thead>
       <tbody></tbody>
     </table>
+    <div id="weekly-viewer"></div>
   </div>
 
   <div class="panel" id="panel-overview">
@@ -280,6 +295,9 @@
     rosterIndex: 0,
     dataUpdatedAt: null,
     lineupFlags: {},
+    weeklyProjections: {},
+    stealTarget: null,
+    expandedWeeks: {},
     db: null,
   };
 
@@ -574,6 +592,65 @@
       + '</tr>';
   }
 
+  // Playoff weeks (16+) can't be chosen as matchups, so the viewer stops here.
+  const WEEKLY_VIEW_LAST_WEEK = 15;
+
+  function fmt1(value) { return value == null ? '—' : Number(value).toFixed(1); }
+
+  function weeklyDetailHTML(week) {
+    const body = week.rows.map((r) => (
+      '<tr>'
+      + '<td>' + esc(r.slot) + '</td>'
+      + '<td>' + esc(r.player) + '</td>'
+      + '<td>' + (r.opponent ? esc(r.opponent) : '—') + '</td>'
+      + '<td>' + fmt1(r.floor) + '</td>'
+      + '<td>' + fmt1(r.proj) + '</td>'
+      + '<td>' + fmt1(r.ceiling) + '</td>'
+      + '<td>' + (r.threeDValue != null ? r.threeDValue.toFixed(1) : '—') + '</td>'
+      + '</tr>'
+    )).join('');
+    return '<tr class="weekly-detail"><td colspan="5">'
+      + '<table class="card-lineup"><thead><tr><th>Slot</th><th>Player</th><th>Opp</th><th>Floor</th><th>DS Proj</th><th>Ceiling</th><th>3D Value</th></tr></thead>'
+      + '<tbody>' + body + '</tbody></table></td></tr>';
+  }
+
+  function renderWeeklyViewer(players) {
+    const el = $('weekly-viewer');
+    if (state.currentWeek > WEEKLY_VIEW_LAST_WEEK) {
+      el.innerHTML = '<p class="weekly-note">No weeks left to show — matchups end after week ' + WEEKLY_VIEW_LAST_WEEK + '.</p>';
+      return;
+    }
+    const view = buildWeeklyView(players, state.draftsharks, state.weeklyProjections, {
+      startWeek: state.currentWeek, endWeek: WEEKLY_VIEW_LAST_WEEK, stealTarget: state.stealTarget,
+    });
+    const noData = view.weeks.length > 0 && view.weeks.every((w) => w.missing === w.rows.length);
+    const rowsHTML = view.weeks.map((w) => {
+      const cls = 'weekly-row' + (w.week === view.bestWeek ? ' week-best' : '') + (w.week === view.worstWeek ? ' week-worst' : '');
+      const tag = w.week === view.bestWeek ? 'Best' : (w.week === view.worstWeek ? 'Worst' : '');
+      const warn = w.missing > 0 ? ' <span class="bye" title="' + w.missing + ' starter(s) have no projection">(' + w.missing + ' missing)</span>' : '';
+      return '<tr class="' + cls + '" data-week="' + w.week + '">'
+        + '<td>Week ' + w.week + warn + '</td>'
+        + '<td>' + w.floor.toFixed(1) + '</td>'
+        + '<td>' + w.proj.toFixed(1) + '</td>'
+        + '<td>' + w.ceiling.toFixed(1) + '</td>'
+        + '<td class="week-tag">' + tag + '</td></tr>'
+        + (state.expandedWeeks[w.week] ? weeklyDetailHTML(w) : '');
+    }).join('');
+
+    const chips = topByValue(players, state.draftsharks).map((p) => (
+      '<button class="steal-chip" data-player="' + esc(p.player) + '" aria-pressed="' + (state.stealTarget === p.player) + '">'
+      + esc(p.player) + ' (' + p.threeDValue.toFixed(0) + ')</button>'
+    )).join('');
+
+    el.innerHTML = '<h3>Weekly lineups (weeks ' + state.currentWeek + '–' + WEEKLY_VIEW_LAST_WEEK + ')</h3>'
+      + '<p class="weekly-note">Lineups are built from 3D value (who they would realistically start) and scored with DraftSharks projections. Click a week to see the lineup.</p>'
+      + (noData ? '<p class="weekly-note">No weekly projections loaded yet — run <code>npm run refresh-weekly-all</code>.</p>' : '')
+      + '<table id="weekly-table"><thead><tr><th>Week</th><th>Floor</th><th>DS Proj</th><th>Ceiling</th><th></th></tr></thead><tbody>' + rowsHTML + '</tbody></table>'
+      + (chips
+        ? '<p class="weekly-note" style="margin-top:14px">Top 3D value players — pick a steal target to hide the week they are on bye:</p><div class="steal-chips">' + chips + '</div>'
+        : '');
+  }
+
   function renderRosters() {
     const teamNames = ['Me', ...nonVampireTeams()];
     if (state.rosterIndex >= teamNames.length) state.rosterIndex = 0;
@@ -589,17 +666,37 @@
       : '';
     const benchRows = bench.map((row) => rosterRowHTML(row, 'BENCH')).join('');
     tbody.innerHTML = starterRows + divider + benchRows;
+    renderWeeklyViewer(players);
   }
 
   $('roster-prev').addEventListener('click', () => {
     const teamNames = ['Me', ...nonVampireTeams()];
     state.rosterIndex = (state.rosterIndex - 1 + teamNames.length) % teamNames.length;
+    state.stealTarget = null;
+    state.expandedWeeks = {};
     renderRosters();
   });
   $('roster-next').addEventListener('click', () => {
     const teamNames = ['Me', ...nonVampireTeams()];
     state.rosterIndex = (state.rosterIndex + 1) % teamNames.length;
+    state.stealTarget = null;
+    state.expandedWeeks = {};
     renderRosters();
+  });
+
+  $('weekly-viewer').addEventListener('click', (event) => {
+    const chip = event.target.closest('.steal-chip');
+    if (chip) {
+      state.stealTarget = state.stealTarget === chip.dataset.player ? null : chip.dataset.player;
+      renderRosters();
+      return;
+    }
+    const row = event.target.closest('tr.weekly-row');
+    if (row) {
+      const week = Number(row.dataset.week);
+      state.expandedWeeks[week] = !state.expandedWeeks[week];
+      renderRosters();
+    }
   });
 
   function lockWeek(week, opponent) {
@@ -736,6 +833,23 @@
     return error;
   }
 
+  async function loadWeeklyProjections(supabase) {
+    const rows = [];
+    const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await supabase
+        .from('vampire_weekly_projections')
+        .select('*')
+        .order('player').order('week')
+        .range(from, from + PAGE - 1);
+      if (error) return error;
+      rows.push(...data);
+      if (data.length < PAGE) break;
+    }
+    state.weeklyProjections = rowsToWeeklyProjections(rows);
+    return null;
+  }
+
   async function loadLineupFlags(supabase) {
     const { data, error } = await supabase.from('vampire_lineup_flags').select('*');
     state.lineupFlags = rowsToLineupFlags(data || []);
@@ -757,6 +871,7 @@
       loadSettings(supabase),
       loadSchedule(supabase),
       loadLineupFlags(supabase),
+      loadWeeklyProjections(supabase),
     ]);
     $('sync-status').textContent = errors.some(Boolean)
       ? 'Could not load the latest data — check your connection and reload.'
