@@ -33,6 +33,15 @@ call, not an oversight (low-stakes data, no-login model).
   no longer in the DraftSharks file. The weekly-projection/opponent columns
   survive a roster refresh; they're owned by `refresh-weekly-projection.js`.
   (Before this, the script wiped the table and blanked every projection.)
+- **`vampire_weekly_projections`** — `(player, week)` PK, `floor_proj`,
+  `ds_proj`, `ceiling_proj`, `opponent`. Every Draft Sharks (half-PPR) week
+  from `in-season/data/processed/rankings_long.csv`, loaded by
+  `scripts/refresh-weekly-projections-all.js` (`npm run refresh-weekly-all --
+  <csv>`). Independent of the two-slot `weekly_projection*` columns. Feeds the
+  Rosters tab weekly viewer (current week through 15; lineups built from 3D
+  value, scored with these numbers). A player absent from a week's latest
+  pull has no row for it, which the page shows as "(N missing)". Loaded with
+  pagination since it exceeds Supabase's 1000-row default limit.
 - **`vampire_settings`** — single row (`id boolean` PK, always `true`).
   `last_regular_season_week, restricted_window_start, restricted_window_end,
   max_meetings_per_opponent`. Currently `13, 5, 13, 2`. Not editable in-app —
