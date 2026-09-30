@@ -223,11 +223,13 @@
   global.opponentForWeek = opponentForWeek;
   global.autoLineup = autoLineup;
   global.scoredRoster = scoredRoster;
+  global.STARTER_COUNTS = STARTER_COUNTS;
+  global.FLEX_ELIGIBLE = FLEX_ELIGIBLE;
   if (typeof module !== 'undefined') {
     module.exports = {
       playerScore, teamWeekBreakdown, teamBenchTopPlayer, teamWeekScore, findPlayerInfo,
       eligiblePositionsForSlot, weekHasPublishedData, projectionForWeek, opponentForWeek,
-      autoLineup, scoredRoster,
+      autoLineup, scoredRoster, STARTER_COUNTS, FLEX_ELIGIBLE,
     };
   }
 })(typeof window !== 'undefined' ? window : global);

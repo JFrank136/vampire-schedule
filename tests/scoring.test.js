@@ -298,3 +298,9 @@ test('scoredRoster orders starters by slot and sorts the bench by 3D Value', () 
   assert.equal(starters.find((p) => p.slot === 'FLEX').player, 'Bench Hi');
   assert.deepEqual(bench.map((p) => p.player), ['Bench Mid', 'Bench Lo']);
 });
+
+test('exports the league slot rules for reuse', () => {
+  const { STARTER_COUNTS, FLEX_ELIGIBLE } = require('../src/scoring.js');
+  assert.deepEqual(STARTER_COUNTS, { QB: 1, RB: 2, WR: 2, TE: 1 });
+  assert.deepEqual(FLEX_ELIGIBLE, ['RB', 'WR', 'TE']);
+});
