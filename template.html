@@ -674,11 +674,19 @@
 
   function fmt0(value) { return value == null ? '—' : String(Math.round(value)); }
 
-  function slotPlayerCell(slot, player) {
-    return player ? esc(player) : '<span class="weekly-note">— empty —</span>';
+  function slotPlayerCell(slot, player, assignment, positionOf, roster) {
+    if (!state.editingLineup) {
+      return player ? esc(player) : '<span class="weekly-note">— empty —</span>';
+    }
+    const options = roster
+      .map((p) => p.player)
+      .filter((name) => name === player || swapIntoSlot(assignment.slots, slot, name, positionOf))
+      .map((name) => '<option value="' + esc(name) + '"' + (name === player ? ' selected' : '') + '>' + esc(name) + '</option>')
+      .join('');
+    return '<select class="fa-slot" data-slot="' + esc(slot) + '">' + options + '</select>';
   }
 
-  function faLineupHTML(assignment, positionOf, week) {
+  function faLineupHTML(assignment, positionOf, week, roster) {
     const starters = LINEUP_SLOTS
       .filter((slot) => assignment.slots[slot])
       .map((slot) => ({ slot, player: assignment.slots[slot], position: positionOf(assignment.slots[slot]) }));
@@ -691,7 +699,7 @@
       const info = player ? state.draftsharks[player] : null;
       const opp = r && r.opponent ? esc(r.opponent) : (info && info.bye === week ? 'BYE' : '—');
       return '<tr><td>' + esc(slot) + '</td>'
-        + '<td>' + slotPlayerCell(slot, player) + '</td>'
+        + '<td>' + slotPlayerCell(slot, player, assignment, positionOf, roster) + '</td>'
         + '<td>' + opp + '</td>'
         + '<td class="num">' + fmt1(r && r.floor) + '</td>'
         + '<td class="num">' + fmt1(r && r.proj) + '</td>'
@@ -732,6 +740,26 @@
       + '</tr></thead><tbody>' + body + '</tbody></table></div>';
   }
 
+  const WHATIF_KEY = 'vampire_fa_whatif';
+
+  function currentSignature() {
+    return rosterSignature(state.rosters.Me || [], state.rosters[FREE_AGENT_TEAM] || []);
+  }
+
+  function saveWhatIf() {
+    try {
+      localStorage.setItem(WHATIF_KEY, JSON.stringify({ sig: currentSignature(), whatIf: state.whatIf }));
+    } catch (e) { /* storage unavailable: the what-if just won't survive a reload */ }
+  }
+
+  function loadWhatIf() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(WHATIF_KEY) || 'null');
+      if (saved && saved.sig === currentSignature()) return normalizeWhatIf(saved.whatIf);
+    } catch (e) { /* fall through to an empty what-if */ }
+    return emptyWhatIf();
+  }
+
   function renderFreeAgents() {
     const base = state.rosters.Me || [];
     const pool = state.rosters[FREE_AGENT_TEAM] || [];
@@ -753,10 +781,12 @@
     const changes = state.whatIf.adds.map((n) => '+ ' + n).concat(state.whatIf.drops.map((n) => '− ' + n));
     const toolbar = '<div class="fa-toolbar">'
       + (changes.length ? '<span class="weekly-note">Changes: ' + changes.map(esc).join(', ') + '</span>' : '')
+      + '<button class="fa-btn" id="fa-edit">' + (state.editingLineup ? 'Done editing' : 'Edit lineup') + '</button>'
+      + (state.whatIf.manualLineup ? '<button class="fa-btn" id="fa-auto">Auto lineup</button>' : '')
       + (changes.length || state.whatIf.manualLineup ? '<button class="fa-btn" id="fa-reset">Reset</button>' : '')
       + '</div>';
 
-    $('fa-lineup').innerHTML = toolbar + faLineupHTML(assignment, positionOf, week);
+    $('fa-lineup').innerHTML = toolbar + faLineupHTML(assignment, positionOf, week, effective);
     $('fa-table-wrap').innerHTML = faTableHTML(rows, week);
   }
 
@@ -812,13 +842,43 @@
     const move = event.target.closest('.fa-move');
     if (move) {
       state.whatIf = toggleRosterMove(state.whatIf, move.dataset.player, move.dataset.mine === 'true');
+      saveWhatIf();
+      renderFreeAgents();
+      return;
+    }
+    if (event.target.closest('#fa-edit')) {
+      state.editingLineup = !state.editingLineup;
+      renderFreeAgents();
+      return;
+    }
+    if (event.target.closest('#fa-auto')) {
+      state.whatIf = { ...state.whatIf, manualLineup: null };
+      saveWhatIf();
       renderFreeAgents();
       return;
     }
     if (event.target.closest('#fa-reset')) {
       state.whatIf = emptyWhatIf();
+      saveWhatIf();
       renderFreeAgents();
     }
+  });
+
+  $('panel-freeagents').addEventListener('change', (event) => {
+    const select = event.target.closest('.fa-slot');
+    if (!select) return;
+    const base = state.rosters.Me || [];
+    const pool = state.rosters[FREE_AGENT_TEAM] || [];
+    const effective = effectiveRoster(base, pool, state.whatIf);
+    const lookup = {};
+    [...base, ...pool].forEach((p) => { lookup[p.player] = p.position; });
+    const assignment = lineupAssignment(effective, state.draftsharks, state.currentWeek, state.whatIf);
+    const next = swapIntoSlot(assignment.slots, select.dataset.slot, select.value, (n) => lookup[n]);
+    if (next) {
+      state.whatIf = { ...state.whatIf, manualLineup: next };
+      saveWhatIf();
+    }
+    renderFreeAgents();
   });
 
   function lockWeek(week, opponent) {
@@ -1010,6 +1070,7 @@
       ? 'Could not load the latest data — check your connection and reload.'
       : '';
     renderDataUpdatedAt();
+    state.whatIf = loadWhatIf();
     renderPicker();
     renderRosters();
     renderFreeAgents();
