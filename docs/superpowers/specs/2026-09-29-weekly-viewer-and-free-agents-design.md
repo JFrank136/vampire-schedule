@@ -25,7 +25,7 @@ Weeks before the current week are not shown.
   DS projection, and ceiling (missing data counts as 0 and is flagged).
 
 ### Table
-One row per week: Week, Opp count not needed; columns Floor total,
+One row per week. Columns: Week, Floor total,
 DS Proj total, Ceiling total. Best week (highest DS Proj total) and worst
 week (lowest) are marked. Clicking a row expands it inline to show that
 week's lineup (slot, player, real-world opponent, floor/proj/ceiling,
