@@ -51,7 +51,6 @@ create table public.vampire_weekly_projections (
   ds_proj numeric,
   ceiling_proj numeric,
   opponent text,
-  bye boolean not null default false,
   primary key (player, week)
 );
 ```
@@ -63,8 +62,8 @@ name-matching + position disambiguation (see refresh-weekly-projection.js).
 The existing two-slot columns and script are left untouched. Page loads the
 table once at startup alongside the other tables.
 
-Byes: derived from the player's `bye` week (already in `vampire_player_values`)
-so a player with no row for a bye week is treated as on bye.
+Byes come from `vampire_player_values.bye` (no bye column here). A non-bye
+starter with no row for a week counts as 0 and is flagged as missing data.
 
 ### Testing
 Unit tests (existing `tests/` runner) for `valueLineup` (3D-only ranking,
