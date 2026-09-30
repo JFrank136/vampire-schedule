@@ -9,6 +9,7 @@ const SRC_ORDER = [
   'name-matching.js',
   'scoring.js',
   'weekly-viewer.js',
+  'free-agents.js',
   'rules.js',
   'schedule-generator.js',
   'lineup-flags.js',
