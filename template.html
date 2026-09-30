@@ -131,6 +131,13 @@
   #weekly-viewer { margin-top: 2rem; }
   #weekly-viewer h3 { font-family: 'Oswald', sans-serif; font-size: 14px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 4px; }
   .weekly-note { color: var(--text-2); font-size: 12px; margin: 4px 0 10px; }
+  .fa-scroll { overflow-x: auto; }
+  #fa-table tr.fa-mine td { background: var(--warn-bg); }
+  #fa-table tr.fa-starter td:nth-child(2) { font-weight: 600; }
+  #fa-table td.num, #fa-table th.num, #fa-lineup-table td.num, #fa-lineup-table th.num { text-align: right; }
+  .fa-btn { font-size: 12px; padding: 3px 10px; }
+  .fa-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0 12px; }
+  .fa-lineup-total td { font-weight: 600; border-top: 1px solid var(--border); }
   .weekly-row { cursor: pointer; }
   .weekly-row.week-best td { background: var(--good-bg); }
   .weekly-row.week-worst td { background: var(--bad-bg); }
@@ -218,6 +225,7 @@
   <div class="tabs">
     <button class="tab active" data-tab="picker">Weekly picker</button>
     <button class="tab" data-tab="rosters">Rosters</button>
+    <button class="tab" data-tab="freeagents">Free agents</button>
     <button class="tab" data-tab="overview">Season overview</button>
   </div>
   <p id="sync-status"></p>
@@ -245,6 +253,12 @@
       <tbody></tbody>
     </table>
     <div id="weekly-viewer"></div>
+  </div>
+
+  <div class="panel" id="panel-freeagents">
+    <p class="weekly-note" id="fa-note"></p>
+    <div id="fa-lineup"></div>
+    <div id="fa-table-wrap"></div>
   </div>
 
   <div class="panel" id="panel-overview">
@@ -298,8 +312,14 @@
     weeklyProjections: {},
     stealTarget: null,
     expandedWeeks: {},
+    rosProjections: {},
+    whatIf: emptyWhatIf(),
+    editingLineup: false,
     db: null,
   };
+
+  // Dev-only: lets a local preview seed state without writing to Supabase.
+  if (location.hostname === 'localhost') window.__vampireState = state;
 
   function $(id) { return document.getElementById(id); }
 
@@ -315,6 +335,7 @@
     if (name === 'picker') renderPicker();
     if (name === 'overview') renderOverview();
     if (name === 'rosters') renderRosters();
+    if (name === 'freeagents') renderFreeAgents();
   }
 
   document.querySelectorAll('.tab').forEach((el) => {
@@ -330,7 +351,7 @@
   });
 
   function nonVampireTeams() {
-    return Object.keys(state.rosters).filter((t) => t !== 'Me');
+    return Object.keys(state.rosters).filter((t) => t !== 'Me' && t !== FREE_AGENT_TEAM);
   }
 
   // Shared by the "Me" card and every opponent card, so both show the same
@@ -651,6 +672,94 @@
         : '');
   }
 
+  function fmt0(value) { return value == null ? '—' : String(Math.round(value)); }
+
+  function slotPlayerCell(slot, player) {
+    return player ? esc(player) : '<span class="weekly-note">— empty —</span>';
+  }
+
+  function faLineupHTML(assignment, positionOf, week) {
+    const starters = LINEUP_SLOTS
+      .filter((slot) => assignment.slots[slot])
+      .map((slot) => ({ slot, player: assignment.slots[slot], position: positionOf(assignment.slots[slot]) }));
+    const totals = lineupTotals(starters, state.weeklyProjections, week);
+    const byPlayer = {};
+    totals.rows.forEach((r) => { byPlayer[r.player] = r; });
+    const body = LINEUP_SLOTS.map((slot) => {
+      const player = assignment.slots[slot];
+      const r = player ? byPlayer[player] : null;
+      const info = player ? state.draftsharks[player] : null;
+      const opp = r && r.opponent ? esc(r.opponent) : (info && info.bye === week ? 'BYE' : '—');
+      return '<tr><td>' + esc(slot) + '</td>'
+        + '<td>' + slotPlayerCell(slot, player) + '</td>'
+        + '<td>' + opp + '</td>'
+        + '<td class="num">' + fmt1(r && r.floor) + '</td>'
+        + '<td class="num">' + fmt1(r && r.proj) + '</td>'
+        + '<td class="num">' + fmt1(r && r.ceiling) + '</td></tr>';
+    }).join('');
+    const total = '<tr class="fa-lineup-total"><td colspan="3">Total</td>'
+      + '<td class="num">' + totals.floor.toFixed(1) + '</td>'
+      + '<td class="num">' + totals.proj.toFixed(1) + '</td>'
+      + '<td class="num">' + totals.ceiling.toFixed(1) + '</td></tr>';
+    const bench = assignment.bench.length
+      ? '<p class="weekly-note">Bench: ' + assignment.bench.map(esc).join(', ') + '</p>' : '';
+    return '<h3>My starting lineup (week ' + week + ')</h3>'
+      + '<div class="fa-scroll"><table id="fa-lineup-table"><thead><tr><th>Slot</th><th>Player</th><th>Opp</th>'
+      + '<th class="num">Floor</th><th class="num">DS Proj</th><th class="num">Ceiling</th></tr></thead><tbody>'
+      + body + total + '</tbody></table></div>' + bench;
+  }
+
+  function faTableHTML(rows, week) {
+    const body = rows.map((r) => {
+      const cls = (r.mine ? 'fa-mine' : '') + (r.starter ? ' fa-starter' : '');
+      return '<tr class="' + cls.trim() + '">'
+        + '<td>' + esc(r.position) + '</td>'
+        + '<td>' + esc(r.player) + (r.onBye ? ' <span class="bye">(bye)</span>' : '') + '</td>'
+        + '<td class="num">' + fmt1(r.floor) + '</td>'
+        + '<td class="num">' + fmt1(r.proj) + '</td>'
+        + '<td class="num">' + fmt1(r.ceiling) + '</td>'
+        + '<td class="num">' + fmt1(r.rosDsProj) + '</td>'
+        + '<td class="num">' + fmt1(r.rosCeiling) + '</td>'
+        + '<td class="num">' + fmt0(r.rosValue) + '</td>'
+        + '<td><button class="fa-btn fa-move" data-player="' + esc(r.player) + '" data-mine="' + r.mine + '">'
+        + (r.mine ? 'Drop' : 'Add') + '</button></td></tr>';
+    }).join('');
+    return '<h3>FLEX players (RB / WR / TE)</h3>'
+      + '<p class="weekly-note">Highlighted rows are on my roster; bold names are in my starting lineup.</p>'
+      + '<div class="fa-scroll"><table id="fa-table"><thead><tr><th>Pos</th><th>Player</th>'
+      + '<th class="num">Wk ' + week + ' Floor</th><th class="num">Wk ' + week + ' DS Proj</th><th class="num">Wk ' + week + ' Ceiling</th>'
+      + '<th class="num">ROS DS Proj</th><th class="num">ROS Ceiling</th><th class="num">ROS 3D Value</th><th></th>'
+      + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+  }
+
+  function renderFreeAgents() {
+    const base = state.rosters.Me || [];
+    const pool = state.rosters[FREE_AGENT_TEAM] || [];
+    const week = state.currentWeek;
+    $('fa-note').textContent = pool.length
+      ? 'What-if scratchpad: nothing here changes your league or rosters.csv. Make the real moves in your league, then update rosters.csv.'
+      : 'No "Free Agents" team in rosters.csv yet. Add players with team "Free Agents" to use this page.';
+
+    const effective = effectiveRoster(base, pool, state.whatIf);
+    const lookup = {};
+    [...base, ...pool].forEach((p) => { lookup[p.player] = p.position; });
+    const positionOf = (name) => lookup[name];
+    const assignment = lineupAssignment(effective, state.draftsharks, week, state.whatIf);
+    const rows = flexTableRows({
+      base, pool, effective, starters: Object.values(assignment.slots).filter(Boolean),
+      playerInfo: state.draftsharks, projections: state.weeklyProjections, ros: state.rosProjections, week,
+    });
+
+    const changes = state.whatIf.adds.map((n) => '+ ' + n).concat(state.whatIf.drops.map((n) => '− ' + n));
+    const toolbar = '<div class="fa-toolbar">'
+      + (changes.length ? '<span class="weekly-note">Changes: ' + changes.map(esc).join(', ') + '</span>' : '')
+      + (changes.length || state.whatIf.manualLineup ? '<button class="fa-btn" id="fa-reset">Reset</button>' : '')
+      + '</div>';
+
+    $('fa-lineup').innerHTML = toolbar + faLineupHTML(assignment, positionOf, week);
+    $('fa-table-wrap').innerHTML = faTableHTML(rows, week);
+  }
+
   function renderRosters() {
     const teamNames = ['Me', ...nonVampireTeams()];
     if (state.rosterIndex >= teamNames.length) state.rosterIndex = 0;
@@ -696,6 +805,19 @@
       const week = Number(row.dataset.week);
       state.expandedWeeks[week] = !state.expandedWeeks[week];
       renderRosters();
+    }
+  });
+
+  $('panel-freeagents').addEventListener('click', (event) => {
+    const move = event.target.closest('.fa-move');
+    if (move) {
+      state.whatIf = toggleRosterMove(state.whatIf, move.dataset.player, move.dataset.mine === 'true');
+      renderFreeAgents();
+      return;
+    }
+    if (event.target.closest('#fa-reset')) {
+      state.whatIf = emptyWhatIf();
+      renderFreeAgents();
     }
   });
 
@@ -833,21 +955,31 @@
     return error;
   }
 
-  async function loadWeeklyProjections(supabase) {
+  // Supabase returns at most 1000 rows per request; page until a short page.
+  async function fetchAll(supabase, table, orderColumns) {
     const rows = [];
     const PAGE = 1000;
     for (let from = 0; ; from += PAGE) {
-      const { data, error } = await supabase
-        .from('vampire_weekly_projections')
-        .select('*')
-        .order('player').order('week')
-        .range(from, from + PAGE - 1);
-      if (error) return error;
+      let query = supabase.from(table).select('*');
+      for (const column of orderColumns) query = query.order(column);
+      const { data, error } = await query.range(from, from + PAGE - 1);
+      if (error) return { error, rows: [] };
       rows.push(...data);
       if (data.length < PAGE) break;
     }
-    state.weeklyProjections = rowsToWeeklyProjections(rows);
-    return null;
+    return { error: null, rows };
+  }
+
+  async function loadWeeklyProjections(supabase) {
+    const { error, rows } = await fetchAll(supabase, 'vampire_weekly_projections', ['player', 'week']);
+    if (!error) state.weeklyProjections = rowsToWeeklyProjections(rows);
+    return error;
+  }
+
+  async function loadRosProjections(supabase) {
+    const { error, rows } = await fetchAll(supabase, 'vampire_ros_projections', ['player']);
+    if (!error) state.rosProjections = rowsToRos(rows);
+    return error;
   }
 
   async function loadLineupFlags(supabase) {
@@ -872,6 +1004,7 @@
       loadSchedule(supabase),
       loadLineupFlags(supabase),
       loadWeeklyProjections(supabase),
+      loadRosProjections(supabase),
     ]);
     $('sync-status').textContent = errors.some(Boolean)
       ? 'Could not load the latest data — check your connection and reload.'
@@ -879,6 +1012,7 @@
     renderDataUpdatedAt();
     renderPicker();
     renderRosters();
+    renderFreeAgents();
     renderOverview();
 
     supabase.channel('vampire_schedule_changes')
