@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  FREE_AGENT_TEAM, LINEUP_SLOTS, emptyWhatIf, normalizeWhatIf, effectiveRoster, toggleRosterMove,
+  FREE_AGENT_TEAM, findFreeAgentTeam, sortFlexRows, LINEUP_SLOTS, emptyWhatIf, normalizeWhatIf, effectiveRoster, toggleRosterMove,
   lineupAssignment, swapIntoSlot, flexTableRows, rosterSignature, rowsToRos,
 } = require('../src/free-agents.js');
 
@@ -205,4 +205,22 @@ test('rosterSignature changes when either roster changes and ignores order', () 
 test('rowsToRos maps DB rows by player', () => {
   const ros = rowsToRos([{ player: 'A', ros_ds_proj: 1.5, ros_ceiling_proj: 2.5, ros_3d_value: 30 }]);
   assert.deepEqual(ros.A, { dsProj: 1.5, ceiling: 2.5, value: 30 });
+});
+
+test('findFreeAgentTeam accepts either spelling, case-insensitively', () => {
+  assert.equal(findFreeAgentTeam({ Me: [], 'FREE AGENT': [] }), 'FREE AGENT');
+  assert.equal(findFreeAgentTeam({ 'Free Agents': [] }), 'Free Agents');
+  assert.equal(findFreeAgentTeam({ Me: [] }), null);
+});
+
+test('sortFlexRows sorts by a column, keeps blanks last in both directions', () => {
+  const rows = [
+    { player: 'B', position: 'RB', proj: 5 },
+    { player: 'A', position: 'WR', proj: null },
+    { player: 'C', position: 'TE', proj: 9 },
+  ];
+  assert.deepEqual(sortFlexRows(rows, 'proj', 'desc').map((r) => r.player), ['C', 'B', 'A']);
+  assert.deepEqual(sortFlexRows(rows, 'proj', 'asc').map((r) => r.player), ['B', 'C', 'A']);
+  assert.deepEqual(sortFlexRows(rows, 'player', 'asc').map((r) => r.player), ['A', 'B', 'C']);
+  assert.deepEqual(sortFlexRows(rows, 'position', 'asc').map((r) => r.position), ['RB', 'TE', 'WR']);
 });

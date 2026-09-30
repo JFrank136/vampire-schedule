@@ -89,11 +89,13 @@ browsing rosters) needs zero Claude/script involvement.
   default (no click-to-expand), bye/injury-risk info always shown, fuzzy
   player-name matching against DraftSharks data.
 - Rosters tab: browse any team's full lineup, one team at a time. Below each
-  roster, a weekly viewer (current week through 15) shows that team's lineup
-  totals per week, best/worst weeks, expandable lineups, and a top-3-by-3D-value
-  steal-target picker that hides that player's bye week.
-- Free agents tab: what-if scratchpad for add/drop and lineup edits (browser-only,
-  never written back). See the 2026-09-29 note below.
+  roster, a weekly viewer (current week through 15) shows that team's DS Proj
+  total per week (shaded green = lowest week to red = highest), who is on bye,
+  and expandable lineups. A position the team can't fill that week counts as a
+  free agent at replacement level (median of bench-tier league players).
+- Free agents tab: sortable, compact what-if scratchpad for add/drop and lineup
+  edits (browser-only, never written back). The pool team in rosters.csv can be
+  spelled "Free Agents" or "FREE AGENT". See the 2026-09-29 note below.
 - Season overview: week table + meeting tally, plus a rule-violation banner
   (`findScheduleViolations` in `src/rules.js`) that flags any team scheduled
   twice in the weeks 5–13 window or more than the season max. Result/note

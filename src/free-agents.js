@@ -10,6 +10,28 @@
   const LINEUP_SLOTS = ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'TE', 'FLEX'];
   const FLEX_POSITIONS = ['RB', 'WR', 'TE'];
 
+  // rosters.csv may spell the pool team "FREE AGENT" or "Free Agents"; find
+  // whichever key is present (case-insensitive) so either works.
+  function findFreeAgentTeam(rosters) {
+    return Object.keys(rosters).find((t) => /^free agents?$/i.test(t.trim())) || null;
+  }
+
+  const SORT_KEYS = ['position', 'player', 'proj', 'floor', 'ceiling', 'rosDsProj', 'rosCeiling', 'rosValue'];
+
+  // Sorts FLEX table rows by one column. Blank values sort last in either
+  // direction; text columns default to A-Z, numeric to high-first (callers pass
+  // `dir`). Name is the tiebreak so order is stable.
+  function sortFlexRows(rows, key, dir) {
+    const sign = dir === 'asc' ? 1 : -1;
+    return rows.slice().sort((a, b) => {
+      const av = a[key]; const bv = b[key];
+      if (av == null && bv != null) return 1;
+      if (bv == null && av != null) return -1;
+      if (av != null && av !== bv) return (av < bv ? -1 : 1) * sign;
+      return a.player < b.player ? -1 : a.player > b.player ? 1 : 0;
+    });
+  }
+
   function slotPositions(slot) {
     return slot === 'FLEX' ? FLEX_POSITIONS : [slot.replace(/\d+$/, '')];
   }
@@ -142,7 +164,7 @@
 
   const api = {
     FREE_AGENT_TEAM, LINEUP_SLOTS, emptyWhatIf, normalizeWhatIf, effectiveRoster, toggleRosterMove,
-    lineupAssignment, swapIntoSlot, flexTableRows, rosterSignature, rowsToRos,
+    lineupAssignment, swapIntoSlot, flexTableRows, findFreeAgentTeam, sortFlexRows, SORT_KEYS, rosterSignature, rowsToRos,
   };
   Object.assign(global, api);
   if (typeof module !== 'undefined') module.exports = api;

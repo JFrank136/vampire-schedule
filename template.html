@@ -138,17 +138,29 @@
   .fa-btn { font-size: 12px; padding: 3px 10px; }
   .fa-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0 12px; }
   .fa-lineup-total td { font-weight: 600; border-top: 1px solid var(--border); }
+  #weekly-table { border-collapse: separate; border-spacing: 0 6px; }
+  #weekly-table th { padding-bottom: 2px; border-bottom: none; }
   .weekly-row { cursor: pointer; }
-  .weekly-row.week-best td { background: var(--good-bg); }
-  .weekly-row.week-worst td { background: var(--bad-bg); }
-  .weekly-detail td { padding: 0 0 10px 0; border-bottom: 1px solid var(--border); }
-  .weekly-detail table { margin: 0; }
-  .week-tag { font-size: 11px; font-weight: 500; }
-  .week-best .week-tag { color: var(--good); }
-  .week-worst .week-tag { color: var(--bad); }
-  .steal-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
-  .steal-chip { font-size: 12px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
-  .steal-chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .weekly-row td { background: var(--surface); border: 1px solid var(--border); border-left-width: 0; border-right-width: 0; padding: 10px 10px; font-weight: 500; }
+  .weekly-row td:first-child { border-left-width: 1px; border-radius: var(--radius) 0 0 var(--radius); }
+  .weekly-row td:last-child { border-right-width: 1px; border-radius: 0 var(--radius) var(--radius) 0; }
+  .weekly-row.open td { background: var(--surface-2); border-bottom-color: transparent; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+  .weekly-row td.ds-cell, .weekly-row.open td.ds-cell { font-family: 'IBM Plex Mono', monospace; background: hsl(calc(120 - 120 * var(--t)) 60% 46% / 0.30); }
+  .weekly-row .chev { display: inline-block; width: 1em; color: var(--text-2); }
+  .weekly-row:hover td { border-color: var(--accent); }
+  .bye-list { font-weight: 400; font-size: 12px; color: var(--text-2); }
+  .weekly-detail td { padding: 0 0 6px 0; border: none; }
+  .weekly-detail .detail-box { background: var(--surface-2); border: 1px solid var(--border); border-top: none; border-radius: 0 0 var(--radius) var(--radius); padding: 4px 14px 12px 28px; margin-top: -6px; }
+  .weekly-detail table { margin: 0; width: 100%; }
+  .weekly-detail th, .weekly-detail td { padding: 4px 6px; }
+  .weekly-detail tbody tr:hover { background: none; }
+  .weekly-detail .stand-in td { color: var(--text-2); font-style: italic; }
+  .detail-bye { font-size: 12px; margin: 8px 0 0; color: var(--bad); }
+  .fa-scroll table.fa-tight th, .fa-scroll table.fa-tight td { padding: 2px 8px; font-size: 12px; }
+  .fa-scroll table.fa-tight .fa-btn { min-height: 0; padding: 1px 9px; font-size: 11px; }
+  #fa-table th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+  #fa-table th.sortable:hover { color: var(--text); }
+  #fa-table th .arrow { display: inline-block; width: 0.9em; }
   .card-lineup th, .card-lineup td { font-size: 12px; padding: 5px 6px; }
   .card-lineup th { font-size: 10px; }
   .card-lineup-bench td { color: var(--text-2); font-style: italic; border-top: 1px solid var(--border); }
@@ -310,8 +322,8 @@
     dataUpdatedAt: null,
     lineupFlags: {},
     weeklyProjections: {},
-    stealTarget: null,
     expandedWeeks: {},
+    faSort: { key: 'proj', dir: 'desc' },
     rosProjections: {},
     whatIf: emptyWhatIf(),
     editingLineup: false,
@@ -351,7 +363,7 @@
   });
 
   function nonVampireTeams() {
-    return Object.keys(state.rosters).filter((t) => t !== 'Me' && t !== FREE_AGENT_TEAM);
+    return Object.keys(state.rosters).filter((t) => t !== 'Me' && t !== findFreeAgentTeam(state.rosters));
   }
 
   // Shared by the "Me" card and every opponent card, so both show the same
@@ -618,21 +630,25 @@
 
   function fmt1(value) { return value == null ? '—' : Number(value).toFixed(1); }
 
+  function byeText(list) {
+    return list.map((p) => p.player + ' (' + p.position + ')').join(', ');
+  }
+
   function weeklyDetailHTML(week) {
     const body = week.rows.map((r) => (
-      '<tr>'
+      '<tr' + (r.replacement ? ' class="stand-in"' : '') + '>'
       + '<td>' + esc(r.slot) + '</td>'
-      + '<td>' + esc(r.player) + '</td>'
+      + '<td>' + (r.replacement ? 'Free agent (replacement level)' : esc(r.player)) + '</td>'
       + '<td>' + (r.opponent ? esc(r.opponent) : '—') + '</td>'
-      + '<td>' + fmt1(r.floor) + '</td>'
-      + '<td>' + fmt1(r.proj) + '</td>'
-      + '<td>' + fmt1(r.ceiling) + '</td>'
+      + '<td>' + (r.estimated ? '~' : '') + fmt1(r.proj) + '</td>'
       + '<td>' + (r.threeDValue != null ? r.threeDValue.toFixed(1) : '—') + '</td>'
       + '</tr>'
     )).join('');
-    return '<tr class="weekly-detail"><td colspan="5">'
-      + '<table class="card-lineup"><thead><tr><th>Slot</th><th>Player</th><th>Opp</th><th>Floor</th><th>DS Proj</th><th>Ceiling</th><th>3D Value</th></tr></thead>'
-      + '<tbody>' + body + '</tbody></table></td></tr>';
+    const bye = week.byePlayers.length
+      ? '<p class="detail-bye">On bye: ' + esc(byeText(week.byePlayers)) + '</p>' : '';
+    return '<tr class="weekly-detail"><td colspan="3"><div class="detail-box">'
+      + '<table class="card-lineup"><thead><tr><th>Slot</th><th>Player</th><th>Opp</th><th>DS Proj</th><th>3D Value</th></tr></thead>'
+      + '<tbody>' + body + '</tbody></table>' + bye + '</div></td></tr>';
   }
 
   function renderWeeklyViewer(players) {
@@ -641,35 +657,34 @@
       el.innerHTML = '<p class="weekly-note">No weeks left to show — matchups end after week ' + WEEKLY_VIEW_LAST_WEEK + '.</p>';
       return;
     }
+    const faTeam = findFreeAgentTeam(state.rosters);
+    const leagueRosters = {};
+    Object.keys(state.rosters).forEach((t) => { if (t !== faTeam) leagueRosters[t] = state.rosters[t]; });
+    const levels = replacementLevels(leagueRosters, state.draftsharks, state.weeklyProjections, state.currentWeek, WEEKLY_VIEW_LAST_WEEK);
     const view = buildWeeklyView(players, state.draftsharks, state.weeklyProjections, {
-      startWeek: state.currentWeek, endWeek: WEEKLY_VIEW_LAST_WEEK, stealTarget: state.stealTarget,
+      startWeek: state.currentWeek, endWeek: WEEKLY_VIEW_LAST_WEEK, levels,
     });
-    const noData = view.weeks.length > 0 && view.weeks.every((w) => w.missing === w.rows.length);
+    const noData = view.weeks.length > 0 && view.weeks.every((w) => w.missing === w.rows.filter((r) => !r.replacement).length);
+    const totals = view.weeks.map((w) => w.proj);
+    const lo = Math.min(...totals); const hi = Math.max(...totals);
     const rowsHTML = view.weeks.map((w) => {
-      const cls = 'weekly-row' + (w.week === view.bestWeek ? ' week-best' : '') + (w.week === view.worstWeek ? ' week-worst' : '');
-      const tag = w.week === view.bestWeek ? 'Best' : (w.week === view.worstWeek ? 'Worst' : '');
-      const warn = w.missing > 0 ? ' <span class="bye" title="' + w.missing + ' starter(s) have no projection">(' + w.missing + ' missing)</span>' : '';
-      return '<tr class="' + cls + '" data-week="' + w.week + '">'
-        + '<td>Week ' + w.week + warn + '</td>'
-        + '<td>' + w.floor.toFixed(1) + '</td>'
-        + '<td>' + w.proj.toFixed(1) + '</td>'
-        + '<td>' + w.ceiling.toFixed(1) + '</td>'
-        + '<td class="week-tag">' + tag + '</td></tr>'
-        + (state.expandedWeeks[w.week] ? weeklyDetailHTML(w) : '');
+      const open = !!state.expandedWeeks[w.week];
+      const t = hi > lo ? (w.proj - lo) / (hi - lo) : 0.5;
+      const warn = w.missing > 0 ? ' <span class="bye" title="' + w.missing + ' starter(s) have no projection; estimated at replacement level">(' + w.missing + ' estimated)</span>' : '';
+      const byes = w.byePlayers.length
+        ? '<span class="bye-list" title="' + esc(byeText(w.byePlayers)) + '">' + esc(byeText(w.byePlayers)) + '</span>'
+        : '<span class="bye-list">—</span>';
+      return '<tr class="weekly-row' + (open ? ' open' : '') + '" data-week="' + w.week + '">'
+        + '<td><span class="chev">' + (open ? '▾' : '▸') + '</span>Week ' + w.week + warn + '</td>'
+        + '<td class="ds-cell" style="--t:' + t.toFixed(3) + '">' + w.proj.toFixed(1) + '</td>'
+        + '<td>' + byes + '</td></tr>'
+        + (open ? weeklyDetailHTML(w) : '');
     }).join('');
 
-    const chips = topByValue(players, state.draftsharks).map((p) => (
-      '<button class="steal-chip" data-player="' + esc(p.player) + '" aria-pressed="' + (state.stealTarget === p.player) + '">'
-      + esc(p.player) + ' (' + p.threeDValue.toFixed(0) + ')</button>'
-    )).join('');
-
     el.innerHTML = '<h3>Weekly lineups (weeks ' + state.currentWeek + '–' + WEEKLY_VIEW_LAST_WEEK + ')</h3>'
-      + '<p class="weekly-note">Lineups are built from 3D value (who they would realistically start) and scored with DraftSharks projections. Click a week to see the lineup.</p>'
+      + '<p class="weekly-note">Lineups are built from 3D value (who they would realistically start) and scored with DraftSharks projections. A position they cannot fill counts as a free agent at replacement level. DS Proj is shaded green (lowest week) to red (highest). Click a week to see the lineup.</p>'
       + (noData ? '<p class="weekly-note">No weekly projections loaded yet — run <code>npm run refresh-weekly-all</code>.</p>' : '')
-      + '<table id="weekly-table"><thead><tr><th>Week</th><th>Floor</th><th>DS Proj</th><th>Ceiling</th><th></th></tr></thead><tbody>' + rowsHTML + '</tbody></table>'
-      + (chips
-        ? '<p class="weekly-note" style="margin-top:14px">Top 3D value players — pick a steal target to hide the week they are on bye:</p><div class="steal-chips">' + chips + '</div>'
-        : '');
+      + '<table id="weekly-table"><thead><tr><th>Week</th><th>DS Proj</th><th>On bye</th></tr></thead><tbody>' + rowsHTML + '</tbody></table>';
   }
 
   function fmt0(value) { return value == null ? '—' : String(Math.round(value)); }
@@ -732,18 +747,29 @@
         + '<td><button class="fa-btn fa-move" data-player="' + esc(r.player) + '" data-mine="' + r.mine + '">'
         + (r.mine ? 'Drop' : 'Add') + '</button></td></tr>';
     }).join('');
+    const wk = 'Wk ' + week + ' ';
+    const cols = [
+      ['position', 'Pos', false], ['player', 'Player', false],
+      ['floor', wk + 'Floor', true], ['proj', wk + 'DS Proj', true], ['ceiling', wk + 'Ceiling', true],
+      ['rosDsProj', 'ROS DS Proj', true], ['rosCeiling', 'ROS Ceiling', true], ['rosValue', 'ROS 3D Value', true],
+    ];
+    const head = cols.map(([key, label, num]) => {
+      const active = state.faSort.key === key;
+      const arrow = active ? (state.faSort.dir === 'asc' ? '▲' : '▼') : '';
+      return '<th class="sortable' + (num ? ' num' : '') + '" data-sort="' + key + '"'
+        + ' aria-sort="' + (active ? (state.faSort.dir === 'asc' ? 'ascending' : 'descending') : 'none') + '">'
+        + label + ' <span class="arrow">' + arrow + '</span></th>';
+    }).join('');
     return '<h3>FLEX players (RB / WR / TE)</h3>'
-      + '<p class="weekly-note">Highlighted rows are on my roster; bold names are in my starting lineup.</p>'
-      + '<div class="fa-scroll"><table id="fa-table"><thead><tr><th>Pos</th><th>Player</th>'
-      + '<th class="num">Wk ' + week + ' Floor</th><th class="num">Wk ' + week + ' DS Proj</th><th class="num">Wk ' + week + ' Ceiling</th>'
-      + '<th class="num">ROS DS Proj</th><th class="num">ROS Ceiling</th><th class="num">ROS 3D Value</th><th></th>'
+      + '<p class="weekly-note">Highlighted rows are on my roster; bold names are in my starting lineup. Click a column header to sort.</p>'
+      + '<div class="fa-scroll"><table id="fa-table" class="fa-tight"><thead><tr>' + head + '<th></th>'
       + '</tr></thead><tbody>' + body + '</tbody></table></div>';
   }
 
   const WHATIF_KEY = 'vampire_fa_whatif';
 
   function currentSignature() {
-    return rosterSignature(state.rosters.Me || [], state.rosters[FREE_AGENT_TEAM] || []);
+    return rosterSignature(state.rosters.Me || [], state.rosters[findFreeAgentTeam(state.rosters)] || []);
   }
 
   function saveWhatIf() {
@@ -762,11 +788,11 @@
 
   function renderFreeAgents() {
     const base = state.rosters.Me || [];
-    const pool = state.rosters[FREE_AGENT_TEAM] || [];
+    const pool = state.rosters[findFreeAgentTeam(state.rosters)] || [];
     const week = state.currentWeek;
     $('fa-note').textContent = pool.length
       ? 'What-if scratchpad: nothing here changes your league or rosters.csv. Make the real moves in your league, then update rosters.csv.'
-      : 'No "Free Agents" team in rosters.csv yet. Add players with team "Free Agents" to use this page.';
+      : 'No "Free Agents" team in rosters.csv yet. Add players with team "Free Agents" (or "FREE AGENT") to use this page.';
 
     const effective = effectiveRoster(base, pool, state.whatIf);
     const lookup = {};
@@ -787,7 +813,7 @@
       + '</div>';
 
     $('fa-lineup').innerHTML = toolbar + faLineupHTML(assignment, positionOf, week, effective);
-    $('fa-table-wrap').innerHTML = faTableHTML(rows, week);
+    $('fa-table-wrap').innerHTML = faTableHTML(sortFlexRows(rows, state.faSort.key, state.faSort.dir), week);
   }
 
   function renderRosters() {
@@ -811,25 +837,17 @@
   $('roster-prev').addEventListener('click', () => {
     const teamNames = ['Me', ...nonVampireTeams()];
     state.rosterIndex = (state.rosterIndex - 1 + teamNames.length) % teamNames.length;
-    state.stealTarget = null;
     state.expandedWeeks = {};
     renderRosters();
   });
   $('roster-next').addEventListener('click', () => {
     const teamNames = ['Me', ...nonVampireTeams()];
     state.rosterIndex = (state.rosterIndex + 1) % teamNames.length;
-    state.stealTarget = null;
     state.expandedWeeks = {};
     renderRosters();
   });
 
   $('weekly-viewer').addEventListener('click', (event) => {
-    const chip = event.target.closest('.steal-chip');
-    if (chip) {
-      state.stealTarget = state.stealTarget === chip.dataset.player ? null : chip.dataset.player;
-      renderRosters();
-      return;
-    }
     const row = event.target.closest('tr.weekly-row');
     if (row) {
       const week = Number(row.dataset.week);
@@ -839,6 +857,16 @@
   });
 
   $('panel-freeagents').addEventListener('click', (event) => {
+    const th = event.target.closest('th[data-sort]');
+    if (th) {
+      const key = th.dataset.sort;
+      const textCol = key === 'position' || key === 'player';
+      state.faSort = state.faSort.key === key
+        ? { key, dir: state.faSort.dir === 'asc' ? 'desc' : 'asc' }
+        : { key, dir: textCol ? 'asc' : 'desc' };
+      renderFreeAgents();
+      return;
+    }
     const move = event.target.closest('.fa-move');
     if (move) {
       state.whatIf = toggleRosterMove(state.whatIf, move.dataset.player, move.dataset.mine === 'true');
@@ -868,7 +896,7 @@
     const select = event.target.closest('.fa-slot');
     if (!select) return;
     const base = state.rosters.Me || [];
-    const pool = state.rosters[FREE_AGENT_TEAM] || [];
+    const pool = state.rosters[findFreeAgentTeam(state.rosters)] || [];
     const effective = effectiveRoster(base, pool, state.whatIf);
     const lookup = {};
     [...base, ...pool].forEach((p) => { lookup[p.player] = p.position; });

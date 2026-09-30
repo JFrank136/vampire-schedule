@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  valueLineup, lineupTotals, buildWeeklyView, topByValue, rowsToWeeklyProjections,
+  valueLineup, lineupTotals, buildWeeklyView, replacementLevels, rowsToWeeklyProjections,
 } = require('../src/weekly-viewer.js');
 
 const TEAM = [
@@ -51,15 +51,24 @@ test('valueLineup skips a player on bye that week', () => {
   ]);
 });
 
-test('valueLineup leaves a slot empty rather than crashing when a position has no players', () => {
+test('valueLineup fills a position the team cannot fill with a free-agent stand-in', () => {
   const starters = valueLineup(TEAM.filter((p) => p.position !== 'TE'), INFO, 1);
-  assert.equal(starters.some((s) => s.slot === 'TE'), false);
+  const te = starters.find((s) => s.slot === 'TE');
+  assert.equal(te.player, 'Free agent');
+  assert.equal(te.replacement, true);
+});
+
+test('valueLineup stands in for FLEX only when no RB/WR/TE is left over', () => {
+  const team = [{ player: 'Q', position: 'QB' }];
+  const starters = valueLineup(team, { Q: { bye: 9, threeDValue: 1 } }, 1);
+  assert.equal(starters.length, 7);
+  assert.equal(starters.filter((s) => s.replacement).length, 6);
 });
 
 test('valueLineup puts players with no 3D value last', () => {
   const team = [{ player: 'A', position: 'RB' }, { player: 'B', position: 'RB' }, { player: 'C', position: 'RB' }];
   const info = { A: { bye: 9, threeDValue: null }, B: { bye: 9, threeDValue: 10 }, C: { bye: 9, threeDValue: 20 } };
-  assert.deepEqual(slotsOf(valueLineup(team, info, 1)), ['RB1:C', 'RB2:B', 'FLEX:A']);
+  assert.deepEqual(slotsOf(valueLineup(team, info, 1).filter((s) => !s.replacement)), ['RB1:C', 'RB2:B', 'FLEX:A']);
 });
 
 test('lineupTotals sums floor/proj/ceiling and counts players with no projection row', () => {
@@ -75,36 +84,44 @@ test('lineupTotals sums floor/proj/ceiling and counts players with no projection
   assert.equal(te.proj, null);
 });
 
-test('buildWeeklyView returns one entry per week with best and worst by DS proj total', () => {
+test('lineupTotals scores a stand-in at the replacement level and does not count it missing', () => {
+  const team = TEAM.filter((p) => p.position !== 'TE');
+  const starters = valueLineup(team, INFO, 1);
+  const totals = lineupTotals(starters, makeProjections(), 1, { QB: 8, RB: 7, WR: 6, TE: 3 });
+  const te = totals.rows.find((r) => r.slot === 'TE');
+  assert.equal(te.proj, 3);
+  assert.equal(totals.missing, 0);
+  assert.equal(totals.proj, 60 + 3); // 6 real starters at 10 + the TE stand-in
+});
+
+test('buildWeeklyView returns one entry per week with DS proj totals', () => {
   const view = buildWeeklyView(TEAM, INFO, makeProjections(), { startWeek: 1, endWeek: 3 });
   assert.deepEqual(view.weeks.map((w) => [w.week, w.proj]), [[1, 70], [2, 80], [3, 64]]);
-  assert.equal(view.bestWeek, 2);
-  assert.equal(view.worstWeek, 3);
 });
 
-test('buildWeeklyView drops the steal target\'s bye week and recomputes best/worst', () => {
-  const view = buildWeeklyView(TEAM, INFO, makeProjections(), { startWeek: 1, endWeek: 3, stealTarget: 'R1' });
-  assert.deepEqual(view.weeks.map((w) => w.week), [1, 2]);
-  assert.equal(view.bestWeek, 2);
-  assert.equal(view.worstWeek, 1);
-});
-
-test('buildWeeklyView with a single week has a best week but no worst week', () => {
-  const view = buildWeeklyView(TEAM, INFO, makeProjections(), { startWeek: 2, endWeek: 2 });
-  assert.equal(view.bestWeek, 2);
-  assert.equal(view.worstWeek, null);
+test('buildWeeklyView lists the players on bye each week, best 3D value first', () => {
+  const view = buildWeeklyView(TEAM, INFO, makeProjections(), { startWeek: 3, endWeek: 3 });
+  assert.deepEqual(view.weeks[0].byePlayers.map((p) => p.player), ['R1']);
+  const other = buildWeeklyView(TEAM, INFO, makeProjections(), { startWeek: 9, endWeek: 9 });
+  assert.deepEqual(other.weeks[0].byePlayers.map((p) => p.player), ['R2', 'R3', 'W1', 'W2', 'Q1', 'W3', 'T1']);
 });
 
 test('buildWeeklyView is empty when startWeek is past endWeek', () => {
   const view = buildWeeklyView(TEAM, INFO, makeProjections(), { startWeek: 16, endWeek: 15 });
   assert.deepEqual(view.weeks, []);
-  assert.equal(view.bestWeek, null);
 });
 
-test('topByValue returns the top 3 by 3D value, skipping players with no value', () => {
-  const info = { ...INFO, Q1: { bye: 9, threeDValue: null } };
-  assert.deepEqual(topByValue(TEAM, info).map((p) => p.player), ['R1', 'R2', 'R3']);
-  assert.deepEqual(topByValue(TEAM, info, 2).map((p) => p.player), ['R1', 'R2']);
+test('replacementLevels is the median of bench-tier players past the league starter count', () => {
+  const mk = (name, position) => ({ player: name, position });
+  const rosters = { A: [mk('a1', 'QB'), mk('a2', 'QB')], B: [mk('b1', 'QB'), mk('b2', 'QB')] };
+  const info = {}; const projections = {};
+  [['a1', 20], ['a2', 12], ['b1', 18], ['b2', 8]].forEach(([n, v]) => {
+    info[n] = { bye: 9 }; projections[n] = { 1: { proj: v } };
+  });
+  // 2 teams x 1 QB slot => the 2 best are starters; bench tier is 12 and 8 -> median (lower) 12
+  assert.equal(replacementLevels(rosters, info, projections, 1, 1)[1].QB, 12);
+  // no players at a position -> 0
+  assert.equal(replacementLevels(rosters, info, projections, 1, 1)[1].TE, 0);
 });
 
 test('rowsToWeeklyProjections nests DB rows by player then week', () => {
@@ -114,4 +131,15 @@ test('rowsToWeeklyProjections nests DB rows by player then week', () => {
   ]);
   assert.deepEqual(nested.A[4], { floor: 1.5, proj: 2.5, ceiling: 3.5, opponent: '@DAL' });
   assert.deepEqual(nested.A[5], { floor: null, proj: 6, ceiling: null, opponent: null });
+});
+
+test('lineupTotals estimates a starter with no projection row at replacement level when levels are given', () => {
+  const projections = makeProjections();
+  delete projections.T1[1];
+  const totals = lineupTotals(valueLineup(TEAM, INFO, 1), projections, 1, { QB: 8, RB: 7, WR: 6, TE: 3 });
+  const te = totals.rows.find((r) => r.player === 'T1');
+  assert.equal(te.proj, 3);
+  assert.equal(te.estimated, true);
+  assert.equal(totals.missing, 1);
+  assert.equal(totals.proj, 63);
 });
