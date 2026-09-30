@@ -42,6 +42,20 @@ call, not an oversight (low-stakes data, no-login model).
   value, scored with these numbers). A player absent from a week's latest
   pull has no row for it, which the page shows as "(N missing)". Loaded with
   pagination since it exceeds Supabase's 1000-row default limit.
+- **`vampire_ros_projections`** — `player` PK, `ros_ds_proj`, `ros_ceiling_proj`,
+  `ros_3d_value`, `as_of_week`. The latest Draft Sharks (half-PPR) rest-of-season
+  pull from `in-season/data/processed/ros_rankings_long.csv` (`projection`,
+  `ceiling_proj`, `ds_value`), loaded by `scripts/refresh-ros-projections.js`
+  (`npm run refresh-ros -- <csv>`). Feeds the Free agents tab. Only players in
+  `vampire_player_values` get a row; ones Draft Sharks isn't ranking ROS have none
+  (shown as "—").
+
+  **Free agents tab:** a what-if scratchpad. It reads a team named `Free Agents`
+  from `rosters.csv` (excluded from every opponent list via `nonVampireTeams()`)
+  and shows RB/WR/TE only. Add/Drop and lineup edits live in the browser's
+  localStorage (`vampire_fa_whatif`, tied to a roster signature; discarded when
+  rosters change) and are never written to Supabase or the CSV. Free agents need
+  to be in the Draft project's `rankings-half-ppr.csv` to have any data.
 - **`vampire_settings`** — single row (`id boolean` PK, always `true`).
   `last_regular_season_week, restricted_window_start, restricted_window_end,
   max_meetings_per_opponent`. Currently `13, 5, 13, 2`. Not editable in-app —
