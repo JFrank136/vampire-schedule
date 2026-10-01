@@ -262,3 +262,9 @@ it doesn't replicate the source/team-scoped lookup, just the flat nickname
 mapping. If a name normalizes differently per source/team there in a way
 that actually matters for the Vampire tool, that nuance is currently lost —
 revisit if that ever causes a real mismatch.
+
+- **`vampire_player_marks`** — `player` PK, `level` (`'good' | 'great'`). The
+  yellow/green marks set by clicking players on the Rosters tab and weekly
+  viewer. Previously browser-localStorage only; now shared via Supabase (RLS
+  off, realtime on) so marks persist across browsers/devices. On first load
+  with an empty table, any marks found in localStorage are uploaded once.

@@ -667,7 +667,9 @@
   const WEEKLY_VIEW_LAST_WEEK = 13;
 
   // Players marked on the Rosters page: 'good' (yellow) or 'great' (green).
-  // Browser-local only. Separate from the week-specific lineup flags.
+  // Stored in Supabase (vampire_player_marks) so they follow you across
+  // browsers/devices; localStorage is a fallback cache. Separate from the
+  // week-specific lineup flags.
   const HIGHLIGHT_KEY = 'vampire-highlighted-players';
   function loadHighlights() {
     try {
@@ -689,6 +691,30 @@
     else if (level === 'great') state.highlighted[player] = 'good';
     else delete state.highlighted[player];
     try { localStorage.setItem(HIGHLIGHT_KEY, JSON.stringify(state.highlighted)); } catch (e) { /* storage unavailable */ }
+    syncHighlight(player, state.highlighted[player]);
+  }
+  async function syncHighlight(player, level) {
+    if (!state.db) return;
+    const { error } = level
+      ? await state.db.from('vampire_player_marks').upsert({ player, level })
+      : await state.db.from('vampire_player_marks').delete().eq('player', player);
+    $('sync-status').textContent = error ? 'Failed to save marks — check your connection and try again.' : '';
+  }
+  // Remote marks win; marks that exist only in this browser (made before the
+  // table existed) are uploaded once so nothing is lost.
+  async function loadHighlightsRemote(supabase) {
+    const { data, error } = await supabase.from('vampire_player_marks').select('*');
+    if (error) return error;
+    const remote = {};
+    (data || []).forEach((r) => { remote[r.player] = r.level; });
+    const localOnly = Object.keys(state.highlighted).filter((n) => !remote[n]);
+    if (data && data.length === 0 && localOnly.length) {
+      await supabase.from('vampire_player_marks').upsert(localOnly.map((player) => ({ player, level: state.highlighted[player] })));
+      return null;
+    }
+    state.highlighted = remote;
+    try { localStorage.setItem(HIGHLIGHT_KEY, JSON.stringify(remote)); } catch (e) { /* storage unavailable */ }
+    return null;
   }
 
   function fmt1(value) { return value == null ? '—' : Number(value).toFixed(1); }
@@ -1178,6 +1204,7 @@
       loadSettings(supabase),
       loadSchedule(supabase),
       loadLineupFlags(supabase),
+      loadHighlightsRemote(supabase),
       loadWeeklyProjections(supabase),
       loadRosProjections(supabase),
     ]);
@@ -1196,6 +1223,14 @@
         await loadSchedule(supabase);
         renderPicker();
         renderOverview();
+      })
+      .subscribe();
+
+    supabase.channel('vampire_player_marks_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vampire_player_marks' }, async () => {
+        await loadHighlightsRemote(supabase);
+        renderPicker();
+        renderRosters();
       })
       .subscribe();
 
