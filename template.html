@@ -165,6 +165,31 @@
   .card-lineup th { font-size: 10px; }
   .card-lineup-bench td { color: var(--text-2); font-style: italic; border-top: 1px solid var(--border); }
 
+  /* Wide layout: fixed 3-up (2-up on tablets) grid. Each card spans four
+     shared grid rows (header / strips / lineup / footer) via subgrid, so
+     names, scores, tables and Lock buttons line up across a row even when
+     some cards have an injury or locked strip and others don't. */
+  .card-eyebrow.ph { display: none; }
+  @media (min-width: 720px) {
+    #opponent-list.card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+    #opponent-list .card { display: grid; grid-row: span 4; grid-template-rows: subgrid; row-gap: 0; }
+    #opponent-list .card-strips { min-height: 0; }
+    #opponent-list .card-footer { align-self: end; }
+    .card-eyebrow, .card-eyebrow.ph { line-height: 14px; }
+    .card-eyebrow.ph { display: block; min-height: 14px; }
+    .card-lineup { table-layout: fixed; }
+    .card-lineup th, .card-lineup td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .card-lineup th:nth-child(1), .card-lineup td:nth-child(1) { width: 14%; }
+    .card-lineup th:nth-child(2), .card-lineup td:nth-child(2) { width: 34%; }
+    .card-lineup th:nth-child(3), .card-lineup td:nth-child(3) { width: 12%; }
+    .card-lineup th:nth-child(4), .card-lineup td:nth-child(4) { width: 10%; }
+    .card-lineup th:nth-child(5), .card-lineup td:nth-child(5) { width: 14%; }
+    .card-lineup th:nth-child(6), .card-lineup td:nth-child(6) { width: 16%; }
+  }
+  @media (min-width: 1100px) {
+    #opponent-list.card-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+
   table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
   th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
   th { color: var(--text-2); font-family: 'Oswald', sans-serif; font-weight: 500; text-transform: uppercase; font-size: 11px; letter-spacing: 0.04em; }
@@ -328,6 +353,7 @@
     lineupFlags: {},
     weeklyProjections: {},
     expandedWeeks: {},
+    weeklyMetric: 'proj',
     highlighted: loadHighlights(),
     faSort: { key: 'proj', dir: 'desc' },
     rosProjections: {},
@@ -378,7 +404,7 @@
   // alone -- lets you eyeball your own lineup's matchups, not just the
   // aggregate score, when deciding who to play.
   function lineupTableHTML(breakdown, benchTop, team) {
-    return '<table class="card-lineup"><thead><tr><th>Slot</th><th>Player</th><th>Opp</th><th>Weekly Proj.</th><th>3D Value</th><th>Status</th></tr></thead>'
+    return '<table class="card-lineup"><thead><tr><th>Slot</th><th>Player</th><th>Opp</th><th>Proj.</th><th>3D Value</th><th>Status</th></tr></thead>'
       + '<tbody>' + breakdown.map((p) => {
         const weeklyText = p.weeklyProjection !== null ? p.weeklyProjection.toFixed(1) : '—';
         // 3D Value is a season-long draft-day number -- once a player is
@@ -478,29 +504,33 @@
 
       const top = document.createElement('div');
       top.className = 'card-top';
-      top.innerHTML = (index === topEligibleIndex && !entry.reason ? '<div class="card-eyebrow">Weakest opponent</div>' : '')
+      top.innerHTML = (index === topEligibleIndex && !entry.reason ? '<div class="card-eyebrow">Weakest opponent</div>' : '<div class="card-eyebrow ph"></div>')
         + '<div class="card-name">' + esc(entry.team) + '</div>'
         + '<div class="card-stats"><span class="card-score">' + entry.score.toFixed(1) + '</span>'
         + '<span class="card-margin ' + (margin >= 0 ? 'good' : 'bad') + '">' + (margin >= 0 ? '+' : '') + margin + '</span></div>';
       card.appendChild(top);
 
+      const strips = document.createElement('div');
+      strips.className = 'card-strips';
+      card.appendChild(strips);
+
       if (byePlayers) {
         const strip = document.createElement('div');
         strip.className = 'card-strip bye';
         strip.innerHTML = '<strong>Bye:</strong> ' + esc(byePlayers);
-        card.appendChild(strip);
+        strips.appendChild(strip);
       }
       if (avgInjuryRisk !== null && avgInjuryRisk >= 40 && !entry.reason) {
         const strip = document.createElement('div');
         strip.className = 'card-strip injury';
         strip.textContent = 'Injury risk: ' + avgInjuryRisk + '%';
-        card.appendChild(strip);
+        strips.appendChild(strip);
       }
       if (isLockedPick) {
         const strip = document.createElement('div');
         strip.className = 'card-strip locked-in';
         strip.textContent = 'Locked in for week ' + state.currentWeek;
-        card.appendChild(strip);
+        strips.appendChild(strip);
       }
 
       const detailsWrap = document.createElement('div');
@@ -677,8 +707,10 @@
       + '<td>' + (r.threeDValue != null ? r.threeDValue.toFixed(1) : '—') + '</td>'
       + '</tr>'
     )).join('');
-    const bye = week.byePlayers.length
-      ? '<p class="detail-bye">On bye: ' + esc(byeText(week.byePlayers)) + '</p>' : '';
+    const bye = (week.byePlayers.length
+      ? '<p class="detail-bye">On bye: ' + esc(byeText(week.byePlayers)) + '</p>' : '')
+      + (week.outPlayers.length
+        ? '<p class="detail-bye">Out (no projection): ' + esc(byeText(week.outPlayers)) + '</p>' : '');
     return '<tr class="weekly-detail"><td colspan="3"><div class="detail-box">'
       + '<table class="card-lineup"><thead><tr><th>Slot</th><th>Player</th><th>Opp</th><th>DS Proj</th><th>3D Value</th></tr></thead>'
       + '<tbody>' + body + '</tbody></table>' + bye + '</div></td></tr>';
@@ -699,26 +731,32 @@
       startWeek, endWeek: WEEKLY_VIEW_LAST_WEEK, levels,
     });
     const noData = view.weeks.length > 0 && view.weeks.every((w) => w.missing === w.rows.filter((r) => !r.replacement).length);
-    const totals = view.weeks.map((w) => w.proj);
+    const useThreeD = state.weeklyMetric === '3d';
+    const metricOf = (w) => (useThreeD ? w.threeD : w.proj);
+    const totals = view.weeks.map(metricOf);
     const lo = Math.min(...totals); const hi = Math.max(...totals);
     const rowsHTML = view.weeks.map((w) => {
       const open = !!state.expandedWeeks[w.week];
-      const t = hi > lo ? (w.proj - lo) / (hi - lo) : 0.5;
+      const t = hi > lo ? (metricOf(w) - lo) / (hi - lo) : 0.5;
       const warn = w.missing > 0 ? ' <span class="bye" title="' + w.missing + ' starter(s) have no projection; estimated at replacement level">(' + w.missing + ' estimated)</span>' : '';
       const byes = w.byePlayers.length
         ? '<span class="bye-list" title="' + esc(byeText(w.byePlayers)) + '">' + esc(byeText(w.byePlayers)) + '</span>'
         : '<span class="bye-list">—</span>';
       return '<tr class="weekly-row' + (open ? ' open' : '') + '" data-week="' + w.week + '">'
         + '<td><span class="chev">' + (open ? '▾' : '▸') + '</span>Week ' + w.week + warn + '</td>'
-        + '<td class="ds-cell" style="--t:' + t.toFixed(3) + '">' + w.proj.toFixed(1) + '</td>'
+        + '<td class="ds-cell" style="--t:' + t.toFixed(3) + '">' + metricOf(w).toFixed(1) + '</td>'
         + '<td>' + byes + '</td></tr>'
         + (open ? weeklyDetailHTML(w) : '');
     }).join('');
 
+    const metricLabel = useThreeD ? '3D Value' : 'DS Proj';
     el.innerHTML = '<h3>Weekly lineups (weeks ' + startWeek + '–' + WEEKLY_VIEW_LAST_WEEK + ')</h3>'
-      + '<p class="weekly-note">Lineups are built from 3D value (who they would realistically start) and scored with DraftSharks projections. A position they cannot fill counts as a free agent at replacement level. DS Proj is shaded green (lowest week) to red (highest). Click a week to see the lineup; click a player to cycle green (great) / yellow (good) / off.</p>'
+      + '<div class="fa-toolbar"><span class="weekly-note" style="margin:0">Shade by:</span>'
+      + '<button class="fa-btn" data-metric="proj"' + (useThreeD ? '' : ' disabled') + '>DS Proj</button>'
+      + '<button class="fa-btn" data-metric="3d"' + (useThreeD ? ' disabled' : '') + '>3D Value</button></div>'
+      + '<p class="weekly-note">Lineups are built from 3D value (who they would realistically start) and scored with DraftSharks projections. A position they cannot fill counts as a free agent at replacement level. The week total is shaded green (lowest week) to red (highest). Players with no DraftSharks projection in a published week are treated as out. Click a week to see the lineup; click a player to cycle green (great) / yellow (good) / off.</p>'
       + (noData ? '<p class="weekly-note">No weekly projections loaded yet — run <code>npm run refresh-weekly-all</code>.</p>' : '')
-      + '<table id="weekly-table"><thead><tr><th>Week</th><th>DS Proj</th><th>On bye</th></tr></thead><tbody>' + rowsHTML + '</tbody></table>';
+      + '<table id="weekly-table"><thead><tr><th>Week</th><th>' + metricLabel + '</th><th>On bye</th></tr></thead><tbody>' + rowsHTML + '</tbody></table>';
   }
 
   function fmt0(value) { return value == null ? '—' : String(Math.round(value)); }
@@ -891,6 +929,12 @@
   });
 
   $('weekly-viewer').addEventListener('click', (event) => {
+    const metricBtn = event.target.closest('button[data-metric]');
+    if (metricBtn) {
+      state.weeklyMetric = metricBtn.dataset.metric;
+      renderRosters();
+      return;
+    }
     const row = event.target.closest('tr.weekly-row');
     if (row) {
       const week = Number(row.dataset.week);

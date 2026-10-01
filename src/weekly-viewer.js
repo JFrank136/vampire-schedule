@@ -11,6 +11,22 @@
   const scoring = typeof module !== 'undefined' ? require('./scoring.js') : global;
   const STARTER_COUNTS = scoring.STARTER_COUNTS;
   const FLEX_ELIGIBLE = scoring.FLEX_ELIGIBLE;
+  const normalizeName = typeof module !== 'undefined' ? require('./name-matching.js').normalizeName : global.normalizeName;
+
+  // The rosters sheet and DraftSharks spell some names differently
+  // ("Kenneth Walker" vs "Kenneth Walker III"). Re-key a name-keyed source
+  // (player info or weekly projections) by the roster's own spelling so every
+  // lookup below can stay a plain `source[player]`.
+  function rekeyByRoster(source, rosterPlayers) {
+    const index = {};
+    for (const name of Object.keys(source || {})) index[normalizeName(name)] = name;
+    const out = {};
+    for (const p of rosterPlayers) {
+      const key = source && source[p.player] ? p.player : index[normalizeName(p.player)];
+      if (key !== undefined) out[p.player] = source[key];
+    }
+    return out;
+  }
 
   // Highest 3D value first; a player with no 3D value sorts last. Name is the
   // tiebreak so lineups are deterministic.
@@ -28,8 +44,21 @@
 
   const REPLACEMENT_NAME = 'Free agent';
 
-  function valueLineup(teamPlayers, playerInfo, week) {
+  // A player with no weekly-projection row in a week DraftSharks has published
+  // is inactive/injured (same rule the picker uses), so he can't be started
+  // even though his draft-day 3D value is still high.
+  function outPlayersForWeek(teamPlayers, projections, week, fullProjections) {
+    if (!projections) return new Set();
+    const have = teamPlayers.filter((p) => projections[p.player] && projections[p.player][week]).length;
+    const published = Object.keys(projections).some((n) => projections[n] && projections[n][week]);
+    if (!published || have === 0) return new Set();
+    return new Set(teamPlayers.filter((p) => !(projections[p.player] && projections[p.player][week])).map((p) => p.player));
+  }
+
+  function valueLineup(teamPlayers, playerInfo, week, outSet) {
+    const out = outSet || new Set();
     const candidates = teamPlayers
+      .filter((p) => !out.has(p.player))
       .filter((p) => !(playerInfo[p.player] && playerInfo[p.player].bye === week))
       .map((p) => ({ player: p.player, position: p.position, threeDValue: threeDOf(playerInfo, p.player) }));
 
@@ -68,6 +97,8 @@
     const teams = Object.keys(rosters);
     const players = [];
     for (const team of teams) for (const p of rosters[team]) players.push(p);
+    playerInfo = rekeyByRoster(playerInfo, players);
+    projections = rekeyByRoster(projections, players);
     const levels = {};
     for (let week = startWeek; week <= endWeek; week += 1) {
       levels[week] = {};
@@ -124,14 +155,26 @@
   // One entry per week: the lineup, its DS proj total, and who is on bye.
   function buildWeeklyView(teamPlayers, playerInfo, projections, options) {
     const { startWeek, endWeek, levels } = options;
+    // Published-week detection needs the whole league's rows, so keep the
+    // original map for that and re-key only this team's lookups.
+    const fullProjections = projections;
+    projections = rekeyByRoster(projections, teamPlayers);
+    playerInfo = rekeyByRoster(playerInfo, teamPlayers);
     const weeks = [];
     for (let week = startWeek; week <= endWeek; week += 1) {
-      const starters = valueLineup(teamPlayers, playerInfo, week);
+      const outSet = outPlayersForWeek(teamPlayers, projections, week);
+      const starters = valueLineup(teamPlayers, playerInfo, week, outSet);
+      const outPlayers = teamPlayers
+        .filter((p) => outSet.has(p.player) && !(playerInfo[p.player] && playerInfo[p.player].bye === week))
+        .map((p) => ({ player: p.player, position: p.position, threeDValue: threeDOf(playerInfo, p.player) }))
+        .sort(byThreeDDescending);
       const byePlayers = teamPlayers
         .filter((p) => playerInfo[p.player] && playerInfo[p.player].bye === week)
         .map((p) => ({ player: p.player, position: p.position, threeDValue: threeDOf(playerInfo, p.player) }))
         .sort(byThreeDDescending);
-      weeks.push({ week, byePlayers, ...lineupTotals(starters, projections, week, levels && levels[week]) });
+      const totals = lineupTotals(starters, projections, week, levels && levels[week]);
+      const threeD = totals.rows.reduce((sum, r) => sum + (r.threeDValue || 0), 0);
+      weeks.push({ week, byePlayers, outPlayers, threeD, ...totals });
     }
     return { weeks };
   }
