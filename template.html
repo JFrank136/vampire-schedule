@@ -177,8 +177,8 @@
   }
   #roster-table .roster-divider:hover { background: none; }
   tr.pickable { cursor: pointer; }
-  tr.pickable.hl-good td { background: var(--warn-bg); font-weight: 600; }
-  tr.pickable.hl-great td { background: var(--good-bg); font-weight: 600; }
+  tr.pickable.hl-good td { background: color-mix(in srgb, var(--warn) 38%, transparent); font-weight: 600; }
+  tr.pickable.hl-great td { background: color-mix(in srgb, var(--good) 38%, transparent); font-weight: 600; }
   .mark-great { color: var(--good); }
   .mark-good { color: var(--warn); }
 
@@ -655,8 +655,8 @@
   }
   function toggleHighlight(player) {
     const level = state.highlighted[player];
-    if (!level) state.highlighted[player] = 'good';
-    else if (level === 'good') state.highlighted[player] = 'great';
+    if (!level) state.highlighted[player] = 'great';
+    else if (level === 'great') state.highlighted[player] = 'good';
     else delete state.highlighted[player];
     try { localStorage.setItem(HIGHLIGHT_KEY, JSON.stringify(state.highlighted)); } catch (e) { /* storage unavailable */ }
   }
@@ -716,7 +716,7 @@
     }).join('');
 
     el.innerHTML = '<h3>Weekly lineups (weeks ' + startWeek + '–' + WEEKLY_VIEW_LAST_WEEK + ')</h3>'
-      + '<p class="weekly-note">Lineups are built from 3D value (who they would realistically start) and scored with DraftSharks projections. A position they cannot fill counts as a free agent at replacement level. DS Proj is shaded green (lowest week) to red (highest). Click a week to see the lineup; click a player to cycle yellow (good) / green (great) / off.</p>'
+      + '<p class="weekly-note">Lineups are built from 3D value (who they would realistically start) and scored with DraftSharks projections. A position they cannot fill counts as a free agent at replacement level. DS Proj is shaded green (lowest week) to red (highest). Click a week to see the lineup; click a player to cycle green (great) / yellow (good) / off.</p>'
       + (noData ? '<p class="weekly-note">No weekly projections loaded yet — run <code>npm run refresh-weekly-all</code>.</p>' : '')
       + '<table id="weekly-table"><thead><tr><th>Week</th><th>DS Proj</th><th>On bye</th></tr></thead><tbody>' + rowsHTML + '</tbody></table>';
   }
