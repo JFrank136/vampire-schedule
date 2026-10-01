@@ -177,7 +177,10 @@
   }
   #roster-table .roster-divider:hover { background: none; }
   tr.pickable { cursor: pointer; }
-  tr.pickable.highlighted td { background: var(--warn-bg); font-weight: 600; }
+  tr.pickable.hl-good td { background: var(--warn-bg); font-weight: 600; }
+  tr.pickable.hl-great td { background: var(--good-bg); font-weight: 600; }
+  .mark-great { color: var(--good); }
+  .mark-good { color: var(--warn); }
 
   .bye { color: var(--bad); font-size: 12px; }
   .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--bad-bg); color: var(--bad); font-weight: 500; }
@@ -392,11 +395,11 @@
         // specific to this week's matchup call, not a standing note on the player.
         const flag = state.lineupFlags[lineupFlagKey(state.currentWeek, team, p.player)];
         const rowClass = flag ? ' class="flag-' + esc(flag) + '"' : '';
-        return '<tr data-week="' + state.currentWeek + '" data-team="' + esc(team) + '" data-player="' + esc(p.player) + '"' + rowClass + '><td>' + esc(p.slot) + '</td><td>' + esc(p.player) + '</td><td>' + oppText + '</td><td>' + weeklyText + '</td>'
+        return '<tr data-week="' + state.currentWeek + '" data-team="' + esc(team) + '" data-player="' + esc(p.player) + '"' + rowClass + '><td>' + esc(p.slot) + '</td><td>' + markHTML(p.player) + esc(p.player) + '</td><td>' + oppText + '</td><td>' + weeklyText + '</td>'
           + '<td>' + threeDText + '</td><td' + statusClass + '>' + statusText + '</td></tr>';
       }).join('')
       + (benchTop
-        ? '<tr class="card-lineup-bench"><td>BENCH</td><td>' + esc(benchTop.player) + '</td>'
+        ? '<tr class="card-lineup-bench"><td>BENCH</td><td>' + markHTML(benchTop.player) + esc(benchTop.player) + '</td>'
           + '<td>' + (benchTop.opponent ? esc(benchTop.opponent) : '—') + '</td>'
           + '<td>' + (benchTop.weeklyProjection !== null ? benchTop.weeklyProjection.toFixed(1) : '—') + '</td>'
           + '<td>' + (benchTop.threeDValue !== null ? benchTop.threeDValue.toFixed(1) : '—') + '</td><td>top bench</td></tr>'
@@ -581,7 +584,8 @@
         statusBadge.className = 'status-badge locked';
         statusBadge.textContent = 'locked';
         statusCell.appendChild(statusBadge);
-        if (!PERMANENTLY_LOCKED_TEAMS.includes(entry.opponent)) {
+        // Weeks already played are final.
+        if (week >= state.currentWeek && !PERMANENTLY_LOCKED_TEAMS.includes(entry.opponent)) {
           const unlockButton = document.createElement('button');
           unlockButton.textContent = 'Unlock';
           unlockButton.addEventListener('click', () => unlockWeek(week));
@@ -617,7 +621,7 @@
     const threeD = row.threeDValue !== null ? row.threeDValue.toFixed(1) : '';
     const weekly = row.weeklyProjection !== null ? row.weeklyProjection.toFixed(1) : '';
     const opponentText = row.opponent ? esc(row.opponent) : (onBye ? 'BYE' : '—');
-    return '<tr class="pickable' + (state.highlighted[row.player] ? ' highlighted' : '') + '" data-player="' + esc(row.player) + '">'
+    return '<tr class="pickable' + (state.highlighted[row.player] ? ' hl-' + state.highlighted[row.player] : '') + '" data-player="' + esc(row.player) + '">'
       + '<td data-label="Slot">' + esc(slotLabel) + '</td>'
       + '<td data-label="Player">' + esc(row.player) + '</td>'
       + '<td data-label="Opp">' + opponentText + '</td>'
@@ -632,13 +636,28 @@
   const WEEKLY_VIEW_FIRST_WEEK = 5;
   const WEEKLY_VIEW_LAST_WEEK = 13;
 
-  // Players the user has starred on the Rosters page. Browser-local only.
+  // Players marked on the Rosters page: 'good' (yellow) or 'great' (green).
+  // Browser-local only. Separate from the week-specific lineup flags.
   const HIGHLIGHT_KEY = 'vampire-highlighted-players';
   function loadHighlights() {
-    try { return JSON.parse(localStorage.getItem(HIGHLIGHT_KEY)) || {}; } catch (e) { return {}; }
+    try {
+      const saved = JSON.parse(localStorage.getItem(HIGHLIGHT_KEY)) || {};
+      Object.keys(saved).forEach((name) => { if (saved[name] === true) saved[name] = 'good'; });
+      return saved;
+    } catch (e) { return {}; }
+  }
+  // Markers shown next to a name in the weekly lineups: star = great, diamond = good.
+  function markHTML(player) {
+    const level = state.highlighted[player];
+    if (level === 'great') return '<span class="mark mark-great" title="Great">★</span> ';
+    if (level === 'good') return '<span class="mark mark-good" title="Good">◆</span> ';
+    return '';
   }
   function toggleHighlight(player) {
-    if (state.highlighted[player]) delete state.highlighted[player]; else state.highlighted[player] = true;
+    const level = state.highlighted[player];
+    if (!level) state.highlighted[player] = 'good';
+    else if (level === 'good') state.highlighted[player] = 'great';
+    else delete state.highlighted[player];
     try { localStorage.setItem(HIGHLIGHT_KEY, JSON.stringify(state.highlighted)); } catch (e) { /* storage unavailable */ }
   }
 
@@ -650,9 +669,9 @@
 
   function weeklyDetailHTML(week) {
     const body = week.rows.map((r) => (
-      '<tr' + (r.replacement ? ' class="stand-in"' : ' class="pickable' + (state.highlighted[r.player] ? ' highlighted' : '') + '" data-player="' + esc(r.player) + '"') + '>'
+      '<tr' + (r.replacement ? ' class="stand-in"' : ' class="pickable" data-player="' + esc(r.player) + '"') + '>'
       + '<td>' + esc(r.slot) + '</td>'
-      + '<td>' + (r.replacement ? 'Free agent (replacement level)' : esc(r.player)) + '</td>'
+      + '<td>' + (r.replacement ? 'Free agent (replacement level)' : markHTML(r.player) + esc(r.player)) + '</td>'
       + '<td>' + (r.opponent ? esc(r.opponent) : '—') + '</td>'
       + '<td>' + (r.estimated ? '~' : '') + fmt1(r.proj) + '</td>'
       + '<td>' + (r.threeDValue != null ? r.threeDValue.toFixed(1) : '—') + '</td>'
@@ -697,7 +716,7 @@
     }).join('');
 
     el.innerHTML = '<h3>Weekly lineups (weeks ' + startWeek + '–' + WEEKLY_VIEW_LAST_WEEK + ')</h3>'
-      + '<p class="weekly-note">Lineups are built from 3D value (who they would realistically start) and scored with DraftSharks projections. A position they cannot fill counts as a free agent at replacement level. DS Proj is shaded green (lowest week) to red (highest). Click a week to see the lineup; click a player to highlight them.</p>'
+      + '<p class="weekly-note">Lineups are built from 3D value (who they would realistically start) and scored with DraftSharks projections. A position they cannot fill counts as a free agent at replacement level. DS Proj is shaded green (lowest week) to red (highest). Click a week to see the lineup; click a player to cycle yellow (good) / green (great) / off.</p>'
       + (noData ? '<p class="weekly-note">No weekly projections loaded yet — run <code>npm run refresh-weekly-all</code>.</p>' : '')
       + '<table id="weekly-table"><thead><tr><th>Week</th><th>DS Proj</th><th>On bye</th></tr></thead><tbody>' + rowsHTML + '</tbody></table>';
   }
