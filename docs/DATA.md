@@ -41,7 +41,12 @@ call, not an oversight (low-stakes data, no-login model).
   Rosters tab weekly viewer (current week through 15; lineups built from 3D
   value, scored with these numbers). A player absent from a week's latest
   pull has no row for it, which the page shows as "(N missing)". Loaded with
-  pagination since it exceeds Supabase's 1000-row default limit.
+  pagination since it exceeds Supabase's 1000-row default limit. Keys use
+  Draft Sharks' spelling ("Kenneth Walker III"), so `weekly-viewer.js` re-keys
+  by roster name via `normalizeName` before lookup. In a week where other
+  players have rows, a rostered player with none is treated as **out** (not
+  startable, listed under "Out (no projection)") — same rule as the picker.
+  The viewer can shade weeks by DS Proj total or 3D Value total (toggle).
 - **`vampire_ros_projections`** — `player` PK, `ros_ds_proj`, `ros_ceiling_proj`,
   `ros_3d_value`, `as_of_week`. The latest Draft Sharks (half-PPR) rest-of-season
   pull from `in-season/data/processed/ros_rankings_long.csv` (`projection`,
