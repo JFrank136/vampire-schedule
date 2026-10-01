@@ -176,6 +176,8 @@
     font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-2);
   }
   #roster-table .roster-divider:hover { background: none; }
+  tr.pickable { cursor: pointer; }
+  tr.pickable.highlighted td { background: var(--warn-bg); font-weight: 600; }
 
   .bye { color: var(--bad); font-size: 12px; }
   .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--bad-bg); color: var(--bad); font-weight: 500; }
@@ -323,6 +325,7 @@
     lineupFlags: {},
     weeklyProjections: {},
     expandedWeeks: {},
+    highlighted: loadHighlights(),
     faSort: { key: 'proj', dir: 'desc' },
     rosProjections: {},
     whatIf: emptyWhatIf(),
@@ -614,7 +617,7 @@
     const threeD = row.threeDValue !== null ? row.threeDValue.toFixed(1) : '';
     const weekly = row.weeklyProjection !== null ? row.weeklyProjection.toFixed(1) : '';
     const opponentText = row.opponent ? esc(row.opponent) : (onBye ? 'BYE' : '—');
-    return '<tr>'
+    return '<tr class="pickable' + (state.highlighted[row.player] ? ' highlighted' : '') + '" data-player="' + esc(row.player) + '">'
       + '<td data-label="Slot">' + esc(slotLabel) + '</td>'
       + '<td data-label="Player">' + esc(row.player) + '</td>'
       + '<td data-label="Opp">' + opponentText + '</td>'
@@ -625,8 +628,19 @@
       + '</tr>';
   }
 
-  // Playoff weeks (16+) can't be chosen as matchups, so the viewer stops here.
-  const WEEKLY_VIEW_LAST_WEEK = 15;
+  // The viewer covers only the matchup-eligible stretch, weeks 5-13.
+  const WEEKLY_VIEW_FIRST_WEEK = 5;
+  const WEEKLY_VIEW_LAST_WEEK = 13;
+
+  // Players the user has starred on the Rosters page. Browser-local only.
+  const HIGHLIGHT_KEY = 'vampire-highlighted-players';
+  function loadHighlights() {
+    try { return JSON.parse(localStorage.getItem(HIGHLIGHT_KEY)) || {}; } catch (e) { return {}; }
+  }
+  function toggleHighlight(player) {
+    if (state.highlighted[player]) delete state.highlighted[player]; else state.highlighted[player] = true;
+    try { localStorage.setItem(HIGHLIGHT_KEY, JSON.stringify(state.highlighted)); } catch (e) { /* storage unavailable */ }
+  }
 
   function fmt1(value) { return value == null ? '—' : Number(value).toFixed(1); }
 
@@ -636,7 +650,7 @@
 
   function weeklyDetailHTML(week) {
     const body = week.rows.map((r) => (
-      '<tr' + (r.replacement ? ' class="stand-in"' : '') + '>'
+      '<tr' + (r.replacement ? ' class="stand-in"' : ' class="pickable' + (state.highlighted[r.player] ? ' highlighted' : '') + '" data-player="' + esc(r.player) + '"') + '>'
       + '<td>' + esc(r.slot) + '</td>'
       + '<td>' + (r.replacement ? 'Free agent (replacement level)' : esc(r.player)) + '</td>'
       + '<td>' + (r.opponent ? esc(r.opponent) : '—') + '</td>'
@@ -653,16 +667,17 @@
 
   function renderWeeklyViewer(players) {
     const el = $('weekly-viewer');
-    if (state.currentWeek > WEEKLY_VIEW_LAST_WEEK) {
+    const startWeek = Math.max(state.currentWeek, WEEKLY_VIEW_FIRST_WEEK);
+    if (startWeek > WEEKLY_VIEW_LAST_WEEK) {
       el.innerHTML = '<p class="weekly-note">No weeks left to show — matchups end after week ' + WEEKLY_VIEW_LAST_WEEK + '.</p>';
       return;
     }
     const faTeam = findFreeAgentTeam(state.rosters);
     const leagueRosters = {};
     Object.keys(state.rosters).forEach((t) => { if (t !== faTeam) leagueRosters[t] = state.rosters[t]; });
-    const levels = replacementLevels(leagueRosters, state.draftsharks, state.weeklyProjections, state.currentWeek, WEEKLY_VIEW_LAST_WEEK);
+    const levels = replacementLevels(leagueRosters, state.draftsharks, state.weeklyProjections, startWeek, WEEKLY_VIEW_LAST_WEEK);
     const view = buildWeeklyView(players, state.draftsharks, state.weeklyProjections, {
-      startWeek: state.currentWeek, endWeek: WEEKLY_VIEW_LAST_WEEK, levels,
+      startWeek, endWeek: WEEKLY_VIEW_LAST_WEEK, levels,
     });
     const noData = view.weeks.length > 0 && view.weeks.every((w) => w.missing === w.rows.filter((r) => !r.replacement).length);
     const totals = view.weeks.map((w) => w.proj);
@@ -681,8 +696,8 @@
         + (open ? weeklyDetailHTML(w) : '');
     }).join('');
 
-    el.innerHTML = '<h3>Weekly lineups (weeks ' + state.currentWeek + '–' + WEEKLY_VIEW_LAST_WEEK + ')</h3>'
-      + '<p class="weekly-note">Lineups are built from 3D value (who they would realistically start) and scored with DraftSharks projections. A position they cannot fill counts as a free agent at replacement level. DS Proj is shaded green (lowest week) to red (highest). Click a week to see the lineup.</p>'
+    el.innerHTML = '<h3>Weekly lineups (weeks ' + startWeek + '–' + WEEKLY_VIEW_LAST_WEEK + ')</h3>'
+      + '<p class="weekly-note">Lineups are built from 3D value (who they would realistically start) and scored with DraftSharks projections. A position they cannot fill counts as a free agent at replacement level. DS Proj is shaded green (lowest week) to red (highest). Click a week to see the lineup; click a player to highlight them.</p>'
       + (noData ? '<p class="weekly-note">No weekly projections loaded yet — run <code>npm run refresh-weekly-all</code>.</p>' : '')
       + '<table id="weekly-table"><thead><tr><th>Week</th><th>DS Proj</th><th>On bye</th></tr></thead><tbody>' + rowsHTML + '</tbody></table>';
   }
@@ -844,6 +859,15 @@
     const teamNames = ['Me', ...nonVampireTeams()];
     state.rosterIndex = (state.rosterIndex + 1) % teamNames.length;
     state.expandedWeeks = {};
+    renderRosters();
+  });
+
+  // Click any player row (roster table or an expanded weekly lineup) to
+  // highlight/unhighlight that player everywhere.
+  document.addEventListener('click', (event) => {
+    const row = event.target.closest('#panel-rosters tr.pickable');
+    if (!row) return;
+    toggleHighlight(row.dataset.player);
     renderRosters();
   });
 
