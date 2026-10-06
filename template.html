@@ -212,7 +212,12 @@
 
   .status-badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 500; margin-right: 6px; }
   .status-badge.locked { background: var(--good-bg); color: var(--good); }
-  .status-badge.loss { background: var(--bad-bg); color: var(--bad); }
+  .status-badge.win { background: #d4edd6; color: #1e7a2e; }
+  .status-badge.loss { background: #f8d7d7; color: #b3261e; }
+  @media (prefers-color-scheme: dark) {
+    .status-badge.win { background: #1f3a25; color: #7fd28a; }
+    .status-badge.loss { background: #402122; color: #f08c86; }
+  }
   .status-badge.tentative { background: var(--warn-bg); color: var(--warn); }
 
   .rule-alert { background: var(--bad-bg); color: var(--bad); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 12px; font-size: 13px; }
@@ -633,7 +638,7 @@
       const resultCell = document.createElement('td');
       if (entry.result === 'W' || entry.result === 'L') {
         const resultBadge = document.createElement('span');
-        resultBadge.className = 'status-badge ' + (entry.result === 'W' ? 'locked' : 'loss');
+        resultBadge.className = 'status-badge ' + (entry.result === 'W' ? 'win' : 'loss');
         resultBadge.textContent = entry.result === 'W' ? 'Win' : 'Loss';
         resultCell.appendChild(resultBadge);
       }
