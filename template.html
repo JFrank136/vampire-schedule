@@ -315,7 +315,7 @@
     <button id="generate-schedule">Generate / refresh season schedule</button>
     <div id="schedule-violations"></div>
     <table id="overview-table">
-      <thead><tr><th>Week</th><th>Opponent</th><th>Status</th><th>Result</th><th>Player stolen</th></tr></thead>
+      <thead><tr><th>Week</th><th>Opponent</th><th>Status</th><th>Player stolen</th></tr></thead>
       <tbody></tbody>
     </table>
     <h4>Meetings so far</h4>
@@ -617,7 +617,13 @@
       const opponentCell = document.createElement('td');
       opponentCell.textContent = entry.opponent || '—';
       const statusCell = document.createElement('td');
-      if (entry.locked) {
+      if (entry.result === 'W' || entry.result === 'L') {
+        // A played week shows its result in place of "locked".
+        const resultBadge = document.createElement('span');
+        resultBadge.className = 'status-badge ' + (entry.result === 'W' ? 'win' : 'loss');
+        resultBadge.textContent = entry.result === 'W' ? 'Won' : 'Lost';
+        statusCell.appendChild(resultBadge);
+      } else if (entry.locked) {
         const statusBadge = document.createElement('span');
         statusBadge.className = 'status-badge locked';
         statusBadge.textContent = 'locked';
@@ -637,17 +643,9 @@
       }
       tr.appendChild(weekCell);
       tr.appendChild(opponentCell);
-      const resultCell = document.createElement('td');
-      if (entry.result === 'W' || entry.result === 'L') {
-        const resultBadge = document.createElement('span');
-        resultBadge.className = 'status-badge ' + (entry.result === 'W' ? 'win' : 'loss');
-        resultBadge.textContent = entry.result === 'W' ? 'Win' : 'Loss';
-        resultCell.appendChild(resultBadge);
-      }
       const stolenCell = document.createElement('td');
       stolenCell.textContent = entry.result === 'W' ? (entry.note || '') : '';
       tr.appendChild(statusCell);
-      tr.appendChild(resultCell);
       tr.appendChild(stolenCell);
 
       tbody.appendChild(tr);
