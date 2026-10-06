@@ -212,6 +212,7 @@
 
   .status-badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 500; margin-right: 6px; }
   .status-badge.locked { background: var(--good-bg); color: var(--good); }
+  .status-badge.loss { background: var(--bad-bg); color: var(--bad); }
   .status-badge.tentative { background: var(--warn-bg); color: var(--warn); }
 
   .rule-alert { background: var(--bad-bg); color: var(--bad); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 12px; font-size: 13px; }
@@ -307,7 +308,7 @@
     <button id="generate-schedule">Generate / refresh season schedule</button>
     <div id="schedule-violations"></div>
     <table id="overview-table">
-      <thead><tr><th>Week</th><th>Opponent</th><th>Status</th><th>Result</th><th>Note</th></tr></thead>
+      <thead><tr><th>Week</th><th>Opponent</th><th>Status</th><th>Result</th><th>Player stolen</th></tr></thead>
       <tbody></tbody>
     </table>
     <h4>Meetings so far</h4>
@@ -630,12 +631,17 @@
       tr.appendChild(weekCell);
       tr.appendChild(opponentCell);
       const resultCell = document.createElement('td');
-      resultCell.textContent = entry.result === 'W' ? 'Won' : entry.result === 'L' ? 'Lost' : '';
-      const noteCell = document.createElement('td');
-      noteCell.textContent = entry.note || '';
+      if (entry.result === 'W' || entry.result === 'L') {
+        const resultBadge = document.createElement('span');
+        resultBadge.className = 'status-badge ' + (entry.result === 'W' ? 'locked' : 'loss');
+        resultBadge.textContent = entry.result === 'W' ? 'Win' : 'Loss';
+        resultCell.appendChild(resultBadge);
+      }
+      const stolenCell = document.createElement('td');
+      stolenCell.textContent = entry.result === 'W' ? (entry.note || '') : '';
       tr.appendChild(statusCell);
       tr.appendChild(resultCell);
-      tr.appendChild(noteCell);
+      tr.appendChild(stolenCell);
 
       tbody.appendChild(tr);
     }
@@ -1076,7 +1082,10 @@
   $('generate-schedule').addEventListener('click', async () => {
     const teams = nonVampireTeams();
     const generated = generateSeasonSchedule(teams, state.settings, state.scheduleWeeks);
-    state.scheduleWeeks = generated;
+    state.scheduleWeeks = generated.map((entry) => {
+      const prev = state.scheduleWeeks.find((w) => w.week === entry.week);
+      return prev ? { result: prev.result, note: prev.note, ...entry } : entry;
+    });
     if (state.db) {
       const { error } = await state.db.from('vampire_schedule').upsert(generated.map((entry) => ({
         week: entry.week, opponent: entry.opponent, locked: entry.locked,
