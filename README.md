@@ -98,8 +98,11 @@ browsing rosters) needs zero Claude/script involvement.
   spelled "Free Agents" or "FREE AGENT". See the 2026-09-29 note below.
 - Season overview: week table + meeting tally, plus a rule-violation banner
   (`findScheduleViolations` in `src/rules.js`) that flags any team scheduled
-  twice in the weeks 5–13 window or more than the season max. Result/note
-  columns were removed — Jared tracks those manually now. Settings
+  twice in the weeks 5–13 window or more than the season max. The Status
+  column shows a green "Won" / red "Lost" badge once a week has a `result`
+  ('W'/'L') and the "Player stolen" column shows its `note` on wins; the page
+  has no editor for these, so results are entered directly in
+  `vampire_schedule` (ask Claude or use the Supabase dashboard). Settings
   (restricted window, max meetings, last regular season week) aren't
   editable in-app; change them via direct SQL on `vampire_settings` if a
   league rule changes.

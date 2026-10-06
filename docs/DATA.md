@@ -71,9 +71,11 @@ call, not an oversight (low-stakes data, no-login model).
   line so a stale refresh is visible at a glance instead of silently showing
   old numbers.
 - **`vampire_schedule`** — one row per week, `week int` PK. `opponent`
-  (nullable text), `locked` (bool), `result`, `note` — the app no longer
-  writes `result`/`note` (that UI was removed; Jared tracks those manually),
-  but the columns still exist and are left alone by the page's upserts.
+  (nullable text), `locked` (bool), `result` ('W'/'L'), `note` (on a win, the
+  player stolen) — the Season overview *displays* `result`/`note` (Won/Lost
+  badge in the Status column, "Player stolen" column) but the app never
+  writes them; they're entered directly in the table (2026-10-06: weeks 1–4
+  filled in). The page's upserts leave the columns alone.
   Written directly by the app (lock-in, schedule generator); the page also
   holds a realtime subscription on this table so simultaneous viewers see
   schedule changes live without reloading.
