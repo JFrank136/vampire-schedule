@@ -307,7 +307,7 @@
     <button id="generate-schedule">Generate / refresh season schedule</button>
     <div id="schedule-violations"></div>
     <table id="overview-table">
-      <thead><tr><th>Week</th><th>Opponent</th><th>Status</th></tr></thead>
+      <thead><tr><th>Week</th><th>Opponent</th><th>Status</th><th>Result</th><th>Note</th></tr></thead>
       <tbody></tbody>
     </table>
     <h4>Meetings so far</h4>
@@ -629,7 +629,13 @@
       }
       tr.appendChild(weekCell);
       tr.appendChild(opponentCell);
+      const resultCell = document.createElement('td');
+      resultCell.textContent = entry.result === 'W' ? 'Won' : entry.result === 'L' ? 'Lost' : '';
+      const noteCell = document.createElement('td');
+      noteCell.textContent = entry.note || '';
       tr.appendChild(statusCell);
+      tr.appendChild(resultCell);
+      tr.appendChild(noteCell);
 
       tbody.appendChild(tr);
     }
