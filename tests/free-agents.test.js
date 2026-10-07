@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   FREE_AGENT_TEAM, findFreeAgentTeam, sortFlexRows, LINEUP_SLOTS, emptyWhatIf, normalizeWhatIf, effectiveRoster, toggleRosterMove,
-  lineupAssignment, swapIntoSlot, flexTableRows, rosterSignature, rowsToRos,
+  lineupAssignment, swapIntoSlot, flexTableRows, rosterSignature, rowsToRos, aliasToRosterNames,
 } = require('../src/free-agents.js');
 
 const WEEK = 4;
@@ -223,4 +223,13 @@ test('sortFlexRows sorts by a column, keeps blanks last in both directions', () 
   assert.deepEqual(sortFlexRows(rows, 'proj', 'asc').map((r) => r.player), ['B', 'C', 'A']);
   assert.deepEqual(sortFlexRows(rows, 'player', 'asc').map((r) => r.player), ['A', 'B', 'C']);
   assert.deepEqual(sortFlexRows(rows, 'position', 'asc').map((r) => r.position), ['RB', 'TE', 'WR']);
+});
+
+test('aliasToRosterNames lets a roster spelling find a suffixed projection key', () => {
+  const byPlayer = { 'Ollie Gordon II': { proj: 9.9 }, 'Other Guy': { proj: 1 } };
+  const rosters = { 'FREE AGENT': [{ player: 'Ollie Gordon', position: 'RB' }], Me: [{ player: 'Other Guy', position: 'WR' }] };
+  const out = aliasToRosterNames(byPlayer, rosters);
+  assert.deepEqual(out['Ollie Gordon'], { proj: 9.9 });
+  assert.deepEqual(out['Other Guy'], { proj: 1 });
+  assert.equal(byPlayer['Ollie Gordon'], undefined);
 });

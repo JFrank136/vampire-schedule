@@ -5,6 +5,9 @@
 // table rows. Nothing here reads or writes Supabase, the CSV, or the DOM.
 (function (global) {
   const scoring = typeof module !== 'undefined' ? require('./scoring.js') : global;
+  const normalizeName = typeof module !== 'undefined'
+    ? require('./name-matching.js').normalizeName
+    : global.normalizeName;
 
   const FREE_AGENT_TEAM = 'Free Agents';
   const LINEUP_SLOTS = ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'TE', 'FLEX'];
@@ -162,9 +165,27 @@
     return out;
   }
 
+  // Projection tables are keyed by the name in vampire_player_values (e.g.
+  // "Ollie Gordon II") but rosters.csv may spell it differently ("Ollie
+  // Gordon"). Returns a copy of `byPlayer` that also answers to each roster
+  // spelling that normalizes to an existing key, so exact-key lookups hit.
+  function aliasToRosterNames(byPlayer, rosters) {
+    const index = {};
+    for (const key of Object.keys(byPlayer)) index[normalizeName(key)] = key;
+    const out = { ...byPlayer };
+    for (const list of Object.values(rosters)) {
+      for (const { player } of list) {
+        if (out[player]) continue;
+        const key = index[normalizeName(player)];
+        if (key) out[player] = byPlayer[key];
+      }
+    }
+    return out;
+  }
+
   const api = {
     FREE_AGENT_TEAM, LINEUP_SLOTS, emptyWhatIf, normalizeWhatIf, effectiveRoster, toggleRosterMove,
-    lineupAssignment, swapIntoSlot, flexTableRows, findFreeAgentTeam, sortFlexRows, SORT_KEYS, rosterSignature, rowsToRos,
+    lineupAssignment, swapIntoSlot, flexTableRows, findFreeAgentTeam, sortFlexRows, SORT_KEYS, rosterSignature, rowsToRos, aliasToRosterNames,
   };
   Object.assign(global, api);
   if (typeof module !== 'undefined') module.exports = api;

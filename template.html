@@ -220,6 +220,9 @@
   }
   :root[data-theme="dark"] .status-badge.win { background: #1f3a25; color: #7fd28a; }
   :root[data-theme="dark"] .status-badge.loss { background: #402122; color: #f08c86; }
+  #overview-table .status { white-space: nowrap; }
+  #overview-table .status > * { vertical-align: middle; }
+  #overview-table .btn-unlock { min-height: 0; padding: 3px 10px; font-size: 12px; }
   .status-badge.tentative { background: var(--warn-bg); color: var(--warn); }
 
   .rule-alert { background: var(--bad-bg); color: var(--bad); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 12px; font-size: 13px; }
@@ -265,6 +268,17 @@
     /* Comfortable tap targets on touch screens (44px is the standard
        accessibility minimum) without bulking up the desktop layout. */
     button { min-height: 44px; padding: 10px 16px; }
+    /* Season overview: keep every row to one line. Week/Opponent/Status
+       never wrap; "Player stolen" takes the leftover width and truncates
+       with an ellipsis (full name is in the cell's title). The Unlock
+       button is a compact pill, not a full-size tap target. */
+    #overview-table th, #overview-table td { padding: 8px 4px; font-size: 12px; }
+    #overview-table td:nth-child(1), #overview-table td:nth-child(2) { white-space: nowrap; }
+    #overview-table th:nth-child(1), #overview-table td:nth-child(1) { width: 1%; padding-right: 8px; }
+    #overview-table td.stolen { max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #overview-table .status-badge { margin-right: 4px; padding: 2px 6px; font-size: 10px; }
+    #overview-table .btn-unlock { min-height: 28px; padding: 2px 8px; font-size: 11px; }
+    #generate-schedule { width: 100%; margin-bottom: 8px; }
     #week-prev, #week-next { padding: 10px 14px; }
   }
 </style>
@@ -315,7 +329,7 @@
     <button id="generate-schedule">Generate / refresh season schedule</button>
     <div id="schedule-violations"></div>
     <table id="overview-table">
-      <thead><tr><th>Week</th><th>Opponent</th><th>Status</th><th>Player stolen</th></tr></thead>
+      <thead><tr><th>Week</th><th>Opponent</th><th>Status</th><th>Stolen</th></tr></thead>
       <tbody></tbody>
     </table>
     <h4>Meetings so far</h4>
@@ -628,9 +642,11 @@
         statusBadge.className = 'status-badge locked';
         statusBadge.textContent = 'locked';
         statusCell.appendChild(statusBadge);
-        // Weeks already played are final.
-        if (week >= state.currentWeek && !PERMANENTLY_LOCKED_TEAMS.includes(entry.opponent)) {
+        // A week with a recorded result is final (handled above); any other
+        // locked week can be re-opened, even one the calendar has passed.
+        if (!PERMANENTLY_LOCKED_TEAMS.includes(entry.opponent)) {
           const unlockButton = document.createElement('button');
+          unlockButton.className = 'btn-unlock';
           unlockButton.textContent = 'Unlock';
           unlockButton.addEventListener('click', () => unlockWeek(week));
           statusCell.appendChild(unlockButton);
@@ -641,10 +657,13 @@
         statusBadge.textContent = 'tentative';
         statusCell.appendChild(statusBadge);
       }
+      statusCell.className = 'status';
       tr.appendChild(weekCell);
       tr.appendChild(opponentCell);
       const stolenCell = document.createElement('td');
+      stolenCell.className = 'stolen';
       stolenCell.textContent = entry.result === 'W' ? (entry.note || '') : '';
+      stolenCell.title = stolenCell.textContent;
       tr.appendChild(statusCell);
       tr.appendChild(stolenCell);
 
@@ -1232,6 +1251,8 @@
       ? 'Could not load the latest data — check your connection and reload.'
       : '';
     renderDataUpdatedAt();
+    state.weeklyProjections = aliasToRosterNames(state.weeklyProjections, state.rosters);
+    state.rosProjections = aliasToRosterNames(state.rosProjections, state.rosters);
     state.whatIf = loadWhatIf();
     renderPicker();
     renderRosters();
