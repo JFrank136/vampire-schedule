@@ -161,6 +161,10 @@ browsing rosters) needs zero Claude/script involvement.
   Value. An ineligible opponent is fully removed from the weekly picker
   board instead of grayed out, and Ray/Sandusky (already at their season
   meeting cap, matchups locked in for good) no longer show an Unlock button.
+  Any other locked week without a Won/Lost result can be unlocked from Season
+  overview, even a past one. Projection/ROS lookups also match roster names
+  ignoring Jr./II suffixes (`aliasToRosterNames` in `src/free-agents.js`), so
+  "Ollie Gordon" finds "Ollie Gordon II".
   `vampire_settings.data_updated_at` is now stamped by both refresh scripts
   and shown on the page as "Data last updated."
 - (2026-09-29) The weekly picker's `currentWeek` is now computed in the
