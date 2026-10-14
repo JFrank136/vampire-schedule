@@ -345,13 +345,6 @@
 </script>
 <script>
 (function () {
-  // These two teams have already met their max meetings for the season with
-  // both matchups locked in for good (see vampire_schedule) -- Jared
-  // considers that history sealed, so the Unlock button is hidden for them
-  // rather than left available just because the general schedule rules
-  // wouldn't technically block re-opening it.
-  const PERMANENTLY_LOCKED_TEAMS = ['Ray', 'Sandusky'];
-
   // NFL weeks roll over on Tuesday (matches in-season/src/season_config.py:
   // WEEK_1_TUESDAY needs a one-line update each season). Computed in the
   // browser so the page switches weeks at local Tuesday midnight instead of
@@ -514,7 +507,13 @@
       // out -- once a team is used up for this stretch/season, it's not a
       // real option, so it shouldn't take up space. The exception is the
       // team already locked in for the week being viewed.
-      if (entry.reason && !isLockedPick) return;
+      // Also kept: a team locked into a different, not-yet-played week --
+      // it stays on the board, marked with that week, instead of vanishing.
+      const lockedElsewhere = state.scheduleWeeks
+        .filter((w) => w.locked && w.opponent === entry.team && !w.result && w.week !== state.currentWeek)
+        .map((w) => w.week)
+        .sort((x, y) => x - y);
+      if (entry.reason && !isLockedPick && lockedElsewhere.length === 0) return;
       const card = document.createElement('div');
       card.className = 'card' + (isLockedPick ? ' locked-in' : '');
       const byePlayers = entry.breakdown.filter((p) => p.onBye).map((p) => p.player).join(', ');
@@ -553,15 +552,18 @@
         strip.className = 'card-strip locked-in';
         strip.textContent = 'Locked in for week ' + state.currentWeek;
         strips.appendChild(strip);
+      } else if (lockedElsewhere.length) {
+        const strip = document.createElement('div');
+        strip.className = 'card-strip locked-in';
+        strip.textContent = 'Locked into week ' + lockedElsewhere.join(', ');
+        strips.appendChild(strip);
       }
 
       const detailsWrap = document.createElement('div');
       detailsWrap.innerHTML = lineupTableHTML(entry.breakdown, entry.benchTop, entry.team);
       card.appendChild(detailsWrap.firstChild);
 
-      if (isLockedPick && PERMANENTLY_LOCKED_TEAMS.includes(entry.team)) {
-        // No footer at all -- these matchups are locked in for good.
-      } else if (isLockedPick) {
+      if (isLockedPick) {
         const footer = document.createElement('div');
         footer.className = 'card-footer';
         const unlockButton = document.createElement('button');
@@ -644,13 +646,11 @@
         statusCell.appendChild(statusBadge);
         // A week with a recorded result is final (handled above); any other
         // locked week can be re-opened, even one the calendar has passed.
-        if (!PERMANENTLY_LOCKED_TEAMS.includes(entry.opponent)) {
-          const unlockButton = document.createElement('button');
-          unlockButton.className = 'btn-unlock';
-          unlockButton.textContent = 'Unlock';
-          unlockButton.addEventListener('click', () => unlockWeek(week));
-          statusCell.appendChild(unlockButton);
-        }
+        const unlockButton = document.createElement('button');
+        unlockButton.className = 'btn-unlock';
+        unlockButton.textContent = 'Unlock';
+        unlockButton.addEventListener('click', () => unlockWeek(week));
+        statusCell.appendChild(unlockButton);
       } else if (entry.opponent) {
         const statusBadge = document.createElement('span');
         statusBadge.className = 'status-badge tentative';
